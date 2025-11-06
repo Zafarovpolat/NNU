@@ -1,7 +1,13 @@
 const sqlite3 = require('sqlite3').verbose();
+const crypto = require('crypto');
 const config = require('../../config');
 
 const db = new sqlite3.Database(config.DB_PATH);
+
+// Хеширование пароля
+function hashPassword(password) {
+    return crypto.createHash('sha256').update(password).digest('hex');
+}
 
 // Инициализация таблиц
 db.serialize(() => {
@@ -11,9 +17,24 @@ db.serialize(() => {
       id INTEGER PRIMARY KEY,
       telegram_id INTEGER UNIQUE,
       full_name TEXT,
+      username TEXT,
       state TEXT DEFAULT 'start',
       notifications_enabled INTEGER DEFAULT 1,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+    // Админы
+    db.run(`
+    CREATE TABLE IF NOT EXISTS admins (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      username TEXT UNIQUE,
+      password_hash TEXT,
+      full_name TEXT,
+      created_by INTEGER,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      last_login DATETIME,
+      FOREIGN KEY (created_by) REFERENCES admins(id)
     )
   `);
 
@@ -29,7 +50,10 @@ db.serialize(() => {
       price_full REAL,
       price_monthly REAL,
       price_single REAL,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      file_url TEXT, -- для книг и одноразовых видео
+      cover_image TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
 
@@ -41,19 +65,22 @@ db.serialize(() => {
       title TEXT,
       video_url TEXT,
       order_num INTEGER,
-      FOREIGN KEY (course_id) REFERENCES courses(id)
+      duration TEXT,
+      FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE
     )
   `);
 
-    // Покупки (убрал confirmed_at)
+    // Покупки
     db.run(`
     CREATE TABLE IF NOT EXISTS purchases (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER,
       course_id INTEGER,
-      payment_type TEXT, -- 'full', 'monthly', 'single'
+      payment_type TEXT,
       amount REAL,
-      status TEXT DEFAULT 'pending', -- 'pending', 'waiting_confirmation', 'paid', 'rejected'
+      status TEXT DEFAULT 'pending',
+      payment_proof TEXT, -- путь к файлу чека
+      payment_proof_type TEXT, -- photo, document, link
       expires_at DATETIME,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -62,7 +89,24 @@ db.serialize(() => {
     )
   `);
 
-    // Тестовые данные
+    // Создаем суперадмина если его нет
+    db.get("SELECT COUNT(*) as count FROM admins", (err, row) => {
+        if (row && row.count === 0) {
+            const defaultPassword = 'admin123'; // ИЗМЕНИТЕ ЭТО!
+            db.run(
+                'INSERT INTO admins (username, password_hash, full_name) VALUES (?, ?, ?)',
+                ['admin', hashPassword(defaultPassword), 'Super Admin'],
+                () => {
+                    console.log('✅ Создан суперадмин:');
+                    console.log('   Username: admin');
+                    console.log('   Password:', defaultPassword);
+                    console.log('   ⚠️  ИЗМЕНИТЕ ПАРОЛЬ ПОСЛЕ ПЕРВОГО ВХОДА!');
+                }
+            );
+        }
+    });
+
+    // Тестовые данные для курсов
     db.get("SELECT COUNT(*) as count FROM courses", (err, row) => {
         if (row && row.count === 0) {
             const stmt = db.prepare(`
@@ -76,25 +120,52 @@ db.serialize(() => {
             stmt.run("Ovoz bilan ishlash", "Ovozni qanday to'g'ri qo'yish", "video", 1, "45 daqiqa", 75000, 0, 75000);
 
             stmt.finalize();
-
-            // Добавим тестовые уроки для первого курса
-            const lessonStmt = db.prepare(`
-        INSERT INTO lessons (course_id, title, video_url, order_num)
-        VALUES (?, ?, ?, ?)
-      `);
-
-            lessonStmt.run(1, "Kirish: Nutq san'ati nima?", "https://example.com/lesson1.mp4", 1);
-            lessonStmt.run(1, "Ovozni to'g'ri qo'yish", "https://example.com/lesson2.mp4", 2);
-            lessonStmt.run(1, "Nafas olish texnikasi", "https://example.com/lesson3.mp4", 3);
-
-            lessonStmt.finalize();
         }
     });
 });
 
 // Helper функции
 const dbHelpers = {
-    // Пользователи
+    // === АДМИНЫ ===
+    createAdmin: (username, password, fullName, createdBy, callback) => {
+        db.run(
+            'INSERT INTO admins (username, password_hash, full_name, created_by) VALUES (?, ?, ?, ?)',
+            [username, hashPassword(password), fullName, createdBy],
+            callback
+        );
+    },
+
+    verifyAdmin: (username, password, callback) => {
+        db.get(
+            'SELECT * FROM admins WHERE username = ? AND password_hash = ?',
+            [username, hashPassword(password)],
+            (err, admin) => {
+                if (admin) {
+                    // Обновляем время последнего входа
+                    db.run('UPDATE admins SET last_login = CURRENT_TIMESTAMP WHERE id = ?', [admin.id]);
+                }
+                callback(err, admin);
+            }
+        );
+    },
+
+    getAllAdmins: (callback) => {
+        db.all('SELECT id, username, full_name, created_at, last_login FROM admins', callback);
+    },
+
+    deleteAdmin: (id, callback) => {
+        db.run('DELETE FROM admins WHERE id = ? AND id != 1', [id], callback); // Нельзя удалить суперадмина
+    },
+
+    changePassword: (adminId, newPassword, callback) => {
+        db.run(
+            'UPDATE admins SET password_hash = ? WHERE id = ?',
+            [hashPassword(newPassword), adminId],
+            callback
+        );
+    },
+
+    // === ПОЛЬЗОВАТЕЛИ ===
     createUser: (telegramId, callback) => {
         db.run(
             'INSERT OR IGNORE INTO users (telegram_id) VALUES (?)',
@@ -119,20 +190,33 @@ const dbHelpers = {
         );
     },
 
-    updateUserName: (telegramId, fullName, callback) => {
+    updateUserName: (telegramId, fullName, username, callback) => {
         db.run(
-            'UPDATE users SET full_name = ?, state = "main_menu" WHERE telegram_id = ?',
-            [fullName, telegramId],
+            'UPDATE users SET full_name = ?, username = ?, state = "main_menu" WHERE telegram_id = ?',
+            [fullName, username, telegramId],
             callback
         );
     },
 
-    // Курсы
+    getAllUsers: (callback) => {
+        db.all(
+            `SELECT u.*, 
+        COUNT(DISTINCT p.id) as purchases_count,
+        SUM(CASE WHEN p.status = 'paid' THEN p.amount ELSE 0 END) as total_spent
+       FROM users u
+       LEFT JOIN purchases p ON u.id = p.user_id
+       GROUP BY u.id
+       ORDER BY u.created_at DESC`,
+            callback
+        );
+    },
+
+    // === КУРСЫ ===
     getAllCourses: (type, callback) => {
         if (type) {
-            db.all('SELECT * FROM courses WHERE type = ?', [type], callback);
+            db.all('SELECT * FROM courses WHERE type = ? ORDER BY created_at DESC', [type], callback);
         } else {
-            db.all('SELECT * FROM courses', callback);
+            db.all('SELECT * FROM courses ORDER BY created_at DESC', callback);
         }
     },
 
@@ -140,7 +224,63 @@ const dbHelpers = {
         db.get('SELECT * FROM courses WHERE id = ?', [id], callback);
     },
 
-    // Покупки
+    createCourse: (courseData, callback) => {
+        const { title, description, type, lessons_count, duration, price_full, price_monthly, price_single, file_url } = courseData;
+        db.run(
+            `INSERT INTO courses (title, description, type, lessons_count, duration, price_full, price_monthly, price_single, file_url)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [title, description, type, lessons_count, duration, price_full, price_monthly, price_single, file_url],
+            callback
+        );
+    },
+
+    updateCourse: (id, courseData, callback) => {
+        const { title, description, type, lessons_count, duration, price_full, price_monthly, price_single, file_url } = courseData;
+        db.run(
+            `UPDATE courses SET 
+        title = ?, description = ?, type = ?, lessons_count = ?, 
+        duration = ?, price_full = ?, price_monthly = ?, price_single = ?, 
+        file_url = ?, updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?`,
+            [title, description, type, lessons_count, duration, price_full, price_monthly, price_single, file_url, id],
+            callback
+        );
+    },
+
+    deleteCourse: (id, callback) => {
+        db.run('DELETE FROM courses WHERE id = ?', [id], callback);
+    },
+
+    // === УРОКИ ===
+    getLessonsByCourse: (courseId, callback) => {
+        db.all(
+            'SELECT * FROM lessons WHERE course_id = ? ORDER BY order_num',
+            [courseId],
+            callback
+        );
+    },
+
+    createLesson: (courseId, title, videoUrl, orderNum, callback) => {
+        db.run(
+            'INSERT INTO lessons (course_id, title, video_url, order_num) VALUES (?, ?, ?, ?)',
+            [courseId, title, videoUrl, orderNum],
+            callback
+        );
+    },
+
+    updateLesson: (id, title, videoUrl, orderNum, callback) => {
+        db.run(
+            'UPDATE lessons SET title = ?, video_url = ?, order_num = ? WHERE id = ?',
+            [title, videoUrl, orderNum, id],
+            callback
+        );
+    },
+
+    deleteLesson: (id, callback) => {
+        db.run('DELETE FROM lessons WHERE id = ?', [id], callback);
+    },
+
+    // === ПОКУПКИ ===
     createPurchase: (userId, courseId, paymentType, amount, callback) => {
         const expiresAt = paymentType === 'monthly'
             ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
@@ -154,14 +294,50 @@ const dbHelpers = {
         );
     },
 
+    updatePurchaseProof: (purchaseId, proofPath, proofType, callback) => {
+        db.run(
+            `UPDATE purchases SET 
+        payment_proof = ?, 
+        payment_proof_type = ?, 
+        status = 'waiting_confirmation',
+        updated_at = CURRENT_TIMESTAMP 
+       WHERE id = ?`,
+            [proofPath, proofType, purchaseId],
+            callback
+        );
+    },
+
     getUserPurchases: (telegramId, callback) => {
         db.all(
-            `SELECT p.*, c.title, c.type FROM purchases p
+            `SELECT p.*, c.title, c.type, c.file_url,
+        CASE 
+          WHEN p.expires_at IS NOT NULL 
+          THEN CAST((julianday(p.expires_at) - julianday('now')) AS INTEGER)
+          ELSE NULL 
+        END as days_left
+       FROM purchases p
        JOIN courses c ON p.course_id = c.id
        WHERE p.user_id = (SELECT id FROM users WHERE telegram_id = ?)
-       AND (p.status = 'paid' AND (p.expires_at IS NULL OR p.expires_at > datetime('now')))`,
+       AND p.status = 'paid' 
+       AND (p.expires_at IS NULL OR p.expires_at > datetime('now'))
+       ORDER BY p.created_at DESC`,
             [telegramId],
             callback
+        );
+    },
+
+    checkUserHasCourse: (telegramId, courseId, callback) => {
+        db.get(
+            `SELECT COUNT(*) as count FROM purchases p
+       JOIN users u ON p.user_id = u.id
+       WHERE u.telegram_id = ? 
+       AND p.course_id = ?
+       AND p.status = 'paid'
+       AND (p.expires_at IS NULL OR p.expires_at > datetime('now'))`,
+            [telegramId, courseId],
+            (err, row) => {
+                callback(err, row ? row.count > 0 : false);
+            }
         );
     },
 
@@ -183,16 +359,7 @@ const dbHelpers = {
             [purchaseId],
             callback
         );
-    },
-
-    // Уроки
-    getLessonsByCourse: (courseId, callback) => {
-        db.all(
-            'SELECT * FROM lessons WHERE course_id = ? ORDER BY order_num',
-            [courseId],
-            callback
-        );
     }
 };
 
-module.exports = { db, ...dbHelpers };
+module.exports = { db, hashPassword, ...dbHelpers };

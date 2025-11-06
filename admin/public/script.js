@@ -1,119 +1,174 @@
 let currentRejectId = null;
+let currentCourseId = null;
 let allPurchases = [];
-let sidebarOpen = false;
+let allCourses = [];
+let currentLessons = [];
+
+// Проверка авторизации
+function checkAuth() {
+  const token = localStorage.getItem('admin_token');
+
+  if (!token) {
+    window.location.href = '/login';
+    return false;
+  }
+
+  // Проверяем токен на сервере
+  fetch('/api/auth/verify', {
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
+  })
+    .then(res => {
+      if (!res.ok) {
+        throw new Error('Invalid token');
+      }
+      return res.json();
+    })
+    .then(data => {
+      // Обновляем имя админа
+      const adminName = localStorage.getItem('admin_name') || data.admin.username;
+      document.getElementById('adminName').textContent = adminName;
+    })
+    .catch(() => {
+      localStorage.removeItem('admin_token');
+      localStorage.removeItem('admin_name');
+      window.location.href = '/login';
+    });
+
+  return true;
+}
+
+// Проверяем при загрузке
+if (!checkAuth()) {
+  throw new Error('Not authenticated');
+}
+
+// Добавляем токен ко всем запросам
+const originalFetch = window.fetch;
+window.fetch = function (...args) {
+  const token = localStorage.getItem('admin_token');
+
+  if (token && args[1]) {
+    args[1].headers = {
+      ...args[1].headers,
+      'Authorization': `Bearer ${token}`
+    };
+  } else if (token) {
+    args[1] = {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    };
+  }
+
+  return originalFetch.apply(this, args);
+};
+
+// Функция выхода
+function logout() {
+  if (confirm('Chiqishni xohlaysizmi?')) {
+    localStorage.removeItem('admin_token');
+    localStorage.removeItem('admin_name');
+    window.location.href = '/login';
+  }
+}
 
 // Переключение табов
 document.querySelectorAll('.nav-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-        const tab = btn.dataset.tab;
-        switchTab(tab);
-    });
+  btn.addEventListener('click', () => {
+    const tab = btn.dataset.tab;
+    switchTab(tab);
+  });
 });
 
 function switchTab(tabName) {
-    // Обновляем кнопки навигации
-    document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
 
-    const activeBtn = document.querySelector(`[data-tab="${tabName}"]`);
-    if (activeBtn) activeBtn.classList.add('active');
+  const activeBtn = document.querySelector(`[data-tab="${tabName}"]`);
+  if (activeBtn) activeBtn.classList.add('active');
 
-    const activeTab = document.getElementById(tabName);
-    if (activeTab) activeTab.classList.add('active');
+  const activeTab = document.getElementById(tabName);
+  if (activeTab) activeTab.classList.add('active');
 
-    // Обновляем заголовок
-    const titles = {
-        'dashboard': 'Dashboard',
-        'purchases': 'To\'lovlar',
-        'courses': 'Kurslar',
-        'users': 'Foydalanuvchilar'
-    };
-    document.getElementById('pageTitle').textContent = titles[tabName] || tabName;
+  const titles = {
+    'dashboard': 'Dashboard',
+    'purchases': 'To\'lovlar',
+    'courses': 'Kurslar',
+    'users': 'Foydalanuvchilar',
+    'admins': 'Adminlar'
+  };
+  document.getElementById('pageTitle').textContent = titles[tabName] || tabName;
 
-    // Закрываем sidebar на мобильных
-    if (window.innerWidth <= 768) {
-        document.querySelector('.sidebar').classList.remove('active');
-    }
+  // Загружаем данные для конкретного таба
+  if (tabName === 'users') loadUsers();
+  if (tabName === 'admins') loadAdmins();
+
+  if (window.innerWidth <= 768) {
+    document.querySelector('.sidebar').classList.remove('active');
+  }
 }
 
 // Мобильное меню
-document.getElementById('menuToggle').addEventListener('click', () => {
-    document.querySelector('.sidebar').classList.toggle('active');
+document.getElementById('menuToggle')?.addEventListener('click', () => {
+  document.querySelector('.sidebar').classList.toggle('active');
 });
-
-// Проверка статуса бота
-async function checkBotStatus() {
-    try {
-        const response = await fetch('/api/bot-status');
-        const status = await response.json();
-
-        if (!status.connected) {
-            showToast('⚠️ Бот не подключен! Запустите бота для отправки уведомлений.', 'warning');
-        }
-    } catch (error) {
-        console.error('Ошибка проверки статуса бота:', error);
-    }
-}
 
 // Toast уведомления
 function showToast(message, type = 'info') {
-    const toast = document.getElementById('toast');
-    toast.textContent = message;
-    toast.className = `toast ${type} show`;
+  const toast = document.getElementById('toast');
+  toast.textContent = message;
+  toast.className = `toast ${type} show`;
 
-    setTimeout(() => {
-        toast.classList.remove('show');
-    }, 5000);
+  setTimeout(() => {
+    toast.classList.remove('show');
+  }, 5000);
 }
 
-// Загрузка статистики
+// === СТАТИСТИКА ===
 async function loadStats() {
-    try {
-        const response = await fetch('/api/stats');
-        const stats = await response.json();
+  try {
+    const response = await fetch('/api/stats');
+    const stats = await response.json();
 
-        document.getElementById('totalUsers').textContent = stats.totalUsers.toLocaleString();
-        document.getElementById('pendingPayments').textContent = stats.pendingPayments.toLocaleString();
-        document.getElementById('confirmedPayments').textContent = stats.confirmedPayments.toLocaleString();
-        document.getElementById('totalRevenue').textContent = stats.totalRevenue.toLocaleString();
+    document.getElementById('totalUsers').textContent = stats.totalUsers.toLocaleString();
+    document.getElementById('pendingPayments').textContent = stats.pendingPayments.toLocaleString();
+    document.getElementById('confirmedPayments').textContent = stats.confirmedPayments.toLocaleString();
+    document.getElementById('totalRevenue').textContent = stats.totalRevenue.toLocaleString();
 
-        // Обновляем badge в навигации
-        const badge = document.getElementById('pendingBadge');
-        if (badge) {
-            badge.textContent = stats.pendingPayments;
-            if (stats.pendingPayments > 0) {
-                badge.style.display = 'inline-block';
-            } else {
-                badge.style.display = 'none';
-            }
-        }
-    } catch (error) {
-        console.error('Ошибка загрузки статистики:', error);
+    const badge = document.getElementById('pendingBadge');
+    if (badge) {
+      badge.textContent = stats.pendingPayments;
+      badge.style.display = stats.pendingPayments > 0 ? 'inline-block' : 'none';
     }
+  } catch (error) {
+    console.error('Ошибка загрузки статистики:', error);
+  }
 }
 
-// Загрузка покупок
+// === ПОКУПКИ ===
 async function loadPurchases() {
-    try {
-        const response = await fetch('/api/purchases');
-        allPurchases = await response.json();
-        displayPurchases(allPurchases);
-        displayRecentPayments(allPurchases.slice(0, 5));
-        loadStats();
-    } catch (error) {
-        console.error('Ошибка загрузки покупок:', error);
-        showToast('Ошибка загрузки покупок', 'error');
-    }
+  try {
+    const response = await fetch('/api/purchases');
+    allPurchases = await response.json();
+    displayPurchases(allPurchases);
+    displayRecentPayments(allPurchases.slice(0, 5));
+    loadStats();
+  } catch (error) {
+    console.error('Ошибка загрузки покупок:', error);
+    showToast('Ошибка загрузки покупок', 'error');
+  }
 }
 
 function displayPurchases(purchases) {
-    const tbody = document.getElementById('purchasesTableBody');
-    tbody.innerHTML = '';
+  const tbody = document.getElementById('purchasesTableBody');
+  tbody.innerHTML = '';
 
-    if (purchases.length === 0) {
-        tbody.innerHTML = `
+  if (purchases.length === 0) {
+    tbody.innerHTML = `
       <tr>
-        <td colspan="8" class="loading-row">
+        <td colspan="9" class="loading-row">
           <div style="padding: 60px 20px; text-align: center; color: #6c757d;">
             <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" style="margin-bottom: 16px; opacity: 0.3;">
               <circle cx="12" cy="12" r="10"/>
@@ -121,24 +176,24 @@ function displayPurchases(purchases) {
               <line x1="12" y1="16" x2="12.01" y2="16"/>
             </svg>
             <p style="font-size: 16px; font-weight: 600; margin-bottom: 8px;">Hech qanday to'lov topilmadi</p>
-            <p style="font-size: 14px; opacity: 0.7;">To'lovlar ro'yxati bo'sh</p>
           </div>
         </td>
       </tr>
     `;
-        return;
-    }
+    return;
+  }
 
-    purchases.forEach(p => {
-        let statusBadge = '';
-        let actionButtons = '';
+  purchases.forEach(p => {
+    let statusBadge = '';
+    let receiptInfo = '';
+    let actionButtons = '';
 
-        switch (p.status) {
-            case 'waiting_confirmation':
-                statusBadge = '<span class="badge badge-waiting">⏳ Kutilmoqda</span>';
-                actionButtons = `
+    switch (p.status) {
+      case 'waiting_confirmation':
+        statusBadge = '<span class="badge badge-waiting">⏳ Kutilmoqda</span>';
+        actionButtons = `
           <div class="action-buttons">
-            <button class="btn-success" onclick="confirmPayment(${p.id})">
+            <button class="btn-success" onclick="confirmPayment(${p.id})" id="confirm-${p.id}">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <polyline points="20 6 9 17 4 12"/>
               </svg>
@@ -153,28 +208,39 @@ function displayPurchases(purchases) {
             </button>
           </div>
         `;
-                break;
-            case 'paid':
-                statusBadge = '<span class="badge badge-paid">✅ To\'langan</span>';
-                actionButtons = `<span style="color: #28a745; font-size: 13px; font-weight: 600;">✓ Tasdiqlangan</span>`;
-                break;
-            case 'rejected':
-                statusBadge = '<span class="badge badge-rejected">❌ Rad etilgan</span>';
-                actionButtons = '-';
-                break;
-            default:
-                statusBadge = '<span class="badge badge-pending">Pending</span>';
-                actionButtons = '-';
-        }
+        break;
+      case 'paid':
+        statusBadge = '<span class="badge badge-paid">✅ To\'langan</span>';
+        actionButtons = `<span style="color: #28a745; font-size: 13px; font-weight: 600;">✓ Tasdiqlangan</span>`;
+        break;
+      case 'rejected':
+        statusBadge = '<span class="badge badge-rejected">❌ Rad etilgan</span>';
+        actionButtons = '-';
+        break;
+      default:
+        statusBadge = '<span class="badge badge-pending">Pending</span>';
+        actionButtons = '-';
+    }
 
-        const icon = p.course_type === 'course' ? '📚' : p.course_type === 'book' ? '📖' : '🎥';
+    // Информация о чеке
+    if (p.payment_proof) {
+      if (p.payment_proof_type === 'photo' || p.payment_proof_type === 'document') {
+        receiptInfo = `<button class="btn-primary" onclick="viewReceipt('${p.payment_proof}', '${p.payment_proof_type}')" style="padding: 6px 12px; font-size: 12px;">📎 Ko'rish</button>`;
+      } else if (p.payment_proof_type === 'link') {
+        receiptInfo = `<a href="${p.payment_proof}" target="_blank" style="font-size: 12px;">🔗 Havola</a>`;
+      }
+    } else {
+      receiptInfo = '-';
+    }
 
-        const row = `
+    const icon = p.course_type === 'course' ? '📚' : p.course_type === 'book' ? '📖' : '🎥';
+
+    const row = `
       <tr>
         <td><strong style="color: var(--primary);">#${p.id}</strong></td>
         <td>
           <div style="font-weight: 600; margin-bottom: 4px;">${p.full_name || 'N/A'}</div>
-          <div style="font-size: 12px; color: #6c757d;">@${p.telegram_id}</div>
+          <div style="font-size: 12px; color: #6c757d;">@${p.username || p.telegram_id}</div>
         </td>
         <td>
           <div style="display: flex; align-items: center; gap: 8px;">
@@ -185,6 +251,7 @@ function displayPurchases(purchases) {
         <td><strong style="color: var(--primary); font-size: 15px;">${p.amount.toLocaleString()}</strong> <span style="font-size: 12px; color: #6c757d;">so'm</span></td>
         <td><span style="text-transform: capitalize; font-weight: 500;">${p.payment_type}</span></td>
         <td>${statusBadge}</td>
+        <td>${receiptInfo}</td>
         <td style="font-size: 13px; color: #6c757d;">
           ${formatDate(p.created_at)}
         </td>
@@ -192,27 +259,27 @@ function displayPurchases(purchases) {
       </tr>
     `;
 
-        tbody.innerHTML += row;
-    });
+    tbody.innerHTML += row;
+  });
 }
 
 function displayRecentPayments(purchases) {
-    const container = document.getElementById('recentPayments');
+  const container = document.getElementById('recentPayments');
 
-    if (!purchases || purchases.length === 0) {
-        container.innerHTML = `
+  if (!purchases || purchases.length === 0) {
+    container.innerHTML = `
       <div style="padding: 40px; text-align: center; color: #6c757d;">
         <p>Hech qanday to'lov yo'q</p>
       </div>
     `;
-        return;
-    }
+    return;
+  }
 
-    container.innerHTML = purchases.map(p => {
-        const icon = p.course_type === 'course' ? '📚' : p.course_type === 'book' ? '📖' : '🎥';
-        const statusColor = p.status === 'paid' ? '#28a745' : p.status === 'waiting_confirmation' ? '#ffc107' : '#dc3545';
+  container.innerHTML = purchases.map(p => {
+    const icon = p.course_type === 'course' ? '📚' : p.course_type === 'book' ? '📖' : '🎥';
+    const statusColor = p.status === 'paid' ? '#28a745' : p.status === 'waiting_confirmation' ? '#ffc107' : '#dc3545';
 
-        return `
+    return `
       <div style="padding: 16px 24px; border-bottom: 1px solid #e9ecef; display: flex; align-items: center; gap: 16px; transition: background 0.2s;" onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background='white'">
         <div style="font-size: 28px;">${icon}</div>
         <div style="flex: 1;">
@@ -225,154 +292,179 @@ function displayRecentPayments(purchases) {
         </div>
       </div>
     `;
-    }).join('');
+  }).join('');
 }
 
 function formatDate(dateString) {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diff = now - date;
-    const minutes = Math.floor(diff / 60000);
-    const hours = Math.floor(diff / 3600000);
-    const days = Math.floor(diff / 86400000);
+  const date = new Date(dateString);
+  const now = new Date();
+  const diff = now - date;
+  const minutes = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const days = Math.floor(diff / 86400000);
 
-    if (minutes < 60) {
-        return `${minutes} daqiqa oldin`;
-    } else if (hours < 24) {
-        return `${hours} soat oldin`;
-    } else if (days < 7) {
-        return `${days} kun oldin`;
-    } else {
-        return date.toLocaleDateString('uz-UZ', {
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-        });
-    }
+  if (minutes < 60) {
+    return `${minutes} daqiqa oldin`;
+  } else if (hours < 24) {
+    return `${hours} soat oldin`;
+  } else if (days < 7) {
+    return `${days} kun oldin`;
+  } else {
+    return date.toLocaleDateString('uz-UZ', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  }
 }
 
 function filterPurchases() {
-    const status = document.getElementById('statusFilter').value;
+  const status = document.getElementById('statusFilter').value;
 
-    if (status === '') {
-        displayPurchases(allPurchases);
-    } else {
-        const filtered = allPurchases.filter(p => p.status === status);
-        displayPurchases(filtered);
-    }
+  if (status === '') {
+    displayPurchases(allPurchases);
+  } else {
+    const filtered = allPurchases.filter(p => p.status === status);
+    displayPurchases(filtered);
+  }
 }
 
 async function confirmPayment(id) {
-    if (!confirm('To\'lovni tasdiqlaysizmi?\n\nFoydalanuvchiga xabar yuboriladi.')) return;
+  if (!confirm('To\'lovni tasdiqlaysizmi?\n\nFoydalanuvchiga xabar yuboriladi.')) return;
 
-    try {
-        const response = await fetch(`/api/purchases/${id}/confirm`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            }
-        });
+  const btn = document.getElementById(`confirm-${id}`);
+  if (btn) {
+    btn.classList.add('loading');
+    btn.disabled = true;
+  }
 
-        const result = await response.json();
+  try {
+    const response = await fetch(`/api/purchases/${id}/confirm`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
 
-        if (result.success) {
-            showToast('✅ To\'lov tasdiqlandi! Foydalanuvchiga xabar yuborildi.', 'success');
-            if (result.warning) {
-                setTimeout(() => {
-                    showToast('⚠️ ' + result.message, 'warning');
-                }, 2000);
-            }
-            loadPurchases();
-        } else {
-            showToast('❌ Xatolik: ' + (result.error || 'Noma\'lum xatolik'), 'error');
-        }
-    } catch (error) {
-        console.error('Ошибка подтверждения:', error);
-        showToast('❌ Xatolik yuz berdi', 'error');
+    const result = await response.json();
+
+    if (result.success) {
+      showToast('✅ To\'lov tasdiqlandi! Foydalanuvchiga xabar yuborildi.', 'success');
+      loadPurchases();
+    } else {
+      showToast('❌ Xatolik: ' + (result.error || 'Noma\'lum xatolik'), 'error');
+      if (btn) {
+        btn.classList.remove('loading');
+        btn.disabled = false;
+      }
     }
+  } catch (error) {
+    console.error('Ошибка подтверждения:', error);
+    showToast('❌ Xatolik yuz berdi', 'error');
+    if (btn) {
+      btn.classList.remove('loading');
+      btn.disabled = false;
+    }
+  }
 }
 
 function openRejectModal(id) {
-    currentRejectId = id;
-    document.getElementById('rejectModal').classList.add('active');
-    document.getElementById('rejectReason').value = '';
-    document.getElementById('rejectReason').focus();
+  currentRejectId = id;
+  document.getElementById('rejectModal').classList.add('active');
+  document.getElementById('rejectReason').value = '';
+  document.getElementById('rejectReason').focus();
 }
 
 function closeRejectModal() {
-    document.getElementById('rejectModal').classList.remove('active');
-    currentRejectId = null;
+  document.getElementById('rejectModal').classList.remove('active');
+  currentRejectId = null;
 }
 
 async function confirmReject() {
-    if (!currentRejectId) return;
+  if (!currentRejectId) return;
 
-    const reason = document.getElementById('rejectReason').value;
+  const reason = document.getElementById('rejectReason').value;
 
-    try {
-        const response = await fetch(`/api/purchases/${currentRejectId}/reject`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ reason })
-        });
+  try {
+    const response = await fetch(`/api/purchases/${currentRejectId}/reject`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason })
+    });
 
-        const result = await response.json();
+    const result = await response.json();
 
-        if (result.success) {
-            showToast('✅ To\'lov rad etildi! Foydalanuvchiga xabar yuborildi.', 'success');
-            if (result.warning) {
-                setTimeout(() => {
-                    showToast('⚠️ ' + result.message, 'warning');
-                }, 2000);
-            }
-            closeRejectModal();
-            loadPurchases();
-        } else {
-            showToast('❌ Xatolik: ' + (result.error || 'Noma\'lum xatolik'), 'error');
-        }
-    } catch (error) {
-        console.error('Ошибка отклонения:', error);
-        showToast('❌ Xatolik yuz berdi', 'error');
+    if (result.success) {
+      showToast('✅ To\'lov rad etildi! Foydalanuvchiga xabar yuborildi.', 'success');
+      closeRejectModal();
+      loadPurchases();
+    } else {
+      showToast('❌ Xatolik: ' + (result.error || 'Noma\'lum xatolik'), 'error');
     }
+  } catch (error) {
+    console.error('Ошибка отклонения:', error);
+    showToast('❌ Xatolik yuz berdi', 'error');
+  }
 }
 
-// Загрузка курсов
-async function loadCourses() {
-    try {
-        const response = await fetch('/api/courses');
-        const courses = await response.json();
+// Просмотр чека
+function viewReceipt(proof, type) {
+  const modal = document.getElementById('receiptModal');
+  const content = document.getElementById('receiptContent');
 
-        displayCoursesGrid(courses);
-        displayCoursesStats(courses);
-    } catch (error) {
-        console.error('Ошибка загрузки курсов:', error);
-    }
+  modal.classList.add('active');
+
+  if (type === 'photo') {
+    content.innerHTML = `<img src="/uploads/receipts/${proof}" class="receipt-preview" alt="Chek">`;
+  } else if (type === 'document') {
+    content.innerHTML = `
+      <p style="margin-bottom: 16px;">📄 Hujjat</p>
+      <a href="/uploads/receipts/${proof}" target="_blank" class="receipt-link">Yuklab olish</a>
+    `;
+  }
+}
+
+function closeReceiptModal() {
+  document.getElementById('receiptModal').classList.remove('active');
+}
+
+// === КУРСЫ ===
+async function loadCourses() {
+  try {
+    const response = await fetch('/api/courses');
+    allCourses = await response.json();
+
+    displayCoursesGrid(allCourses);
+    displayCoursesStats(allCourses);
+  } catch (error) {
+    console.error('Ошибка загрузки курсов:', error);
+  }
 }
 
 function displayCoursesGrid(courses) {
-    const grid = document.getElementById('coursesGrid');
+  const grid = document.getElementById('coursesGrid');
 
-    if (courses.length === 0) {
-        grid.innerHTML = `
+  if (courses.length === 0) {
+    grid.innerHTML = `
       <div class="empty-state" style="grid-column: 1/-1;">
         <svg width="120" height="120" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
           <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>
           <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
         </svg>
         <h3>Kurslar yo'q</h3>
-        <p>Hali hech qanday kurs qo'shilmagan</p>
+        <p>Yangi kurs qo'shish uchun yuqoridagi tugmani bosing</p>
       </div>
     `;
-        return;
-    }
+    return;
+  }
 
-    grid.innerHTML = courses.map(c => {
-        const icon = c.type === 'course' ? '📚' : c.type === 'book' ? '📖' : '🎥';
-        const typeText = c.type === 'course' ? 'Kurs' : c.type === 'book' ? 'Kitob' : 'Video';
+  grid.innerHTML = courses.map(c => {
+    const icon = c.type === 'course' ? '📚' : c.type === 'book' ? '📖' : '🎥';
+    const typeText = c.type === 'course' ? 'Kurs' : c.type === 'book' ? 'Kitob' : 'Video';
 
-        return `
+    return `
       <div class="course-card">
         <div class="course-header">
           <div class="course-icon">${icon}</div>
@@ -394,27 +486,25 @@ function displayCoursesGrid(courses) {
               <span class="info-value" style="color: var(--primary);">${c.price_full.toLocaleString()} so'm</span>
             </div>
           </div>
-          <button class="btn-primary" style="width: 100%;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-            </svg>
-            Tahrirlash
-          </button>
+          <div style="display: flex; gap: 8px;">
+            ${c.type === 'course' ? `<button class="btn-primary" onclick="openLessonsModal(${c.id})" style="flex: 1; margin: 0; padding: 10px; font-size: 13px;">📚 Darslar</button>` : ''}
+            <button class="btn-primary" onclick="editCourse(${c.id})" style="flex: 1; margin: 0; padding: 10px; font-size: 13px;">✏️ Tahrirlash</button>
+            <button class="btn-danger" onclick="deleteCourse(${c.id})" style="padding: 10px 12px; font-size: 13px;">🗑️</button>
+          </div>
         </div>
       </div>
     `;
-    }).join('');
+  }).join('');
 }
 
 function displayCoursesStats(courses) {
-    const container = document.getElementById('coursesStats');
+  const container = document.getElementById('coursesStats');
 
-    const courseCount = courses.filter(c => c.type === 'course').length;
-    const bookCount = courses.filter(c => c.type === 'book').length;
-    const videoCount = courses.filter(c => c.type === 'video').length;
+  const courseCount = courses.filter(c => c.type === 'course').length;
+  const bookCount = courses.filter(c => c.type === 'book').length;
+  const videoCount = courses.filter(c => c.type === 'video').length;
 
-    container.innerHTML = `
+  container.innerHTML = `
     <div style="padding: 24px;">
       <div style="margin-bottom: 24px;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
@@ -456,63 +546,424 @@ function displayCoursesStats(courses) {
   `;
 }
 
-// Автообновление каждые 30 секунд
+// Модал для курса
+function openCourseModal(courseId = null) {
+  currentCourseId = courseId;
+  const modal = document.getElementById('courseModal');
+  const form = document.getElementById('courseForm');
+
+  form.reset();
+
+  if (courseId) {
+    document.getElementById('courseModalTitle').textContent = 'Kursni tahrirlash';
+    const course = allCourses.find(c => c.id === courseId);
+
+    if (course) {
+      document.getElementById('courseId').value = course.id;
+      document.getElementById('courseTitle').value = course.title;
+      document.getElementById('courseDescription').value = course.description;
+      document.getElementById('courseType').value = course.type;
+      document.getElementById('courseLessonsCount').value = course.lessons_count;
+      document.getElementById('courseDuration').value = course.duration;
+      document.getElementById('coursePriceFull').value = course.price_full;
+      document.getElementById('coursePriceMonthly').value = course.price_monthly;
+      document.getElementById('coursePriceSingle').value = course.price_single;
+      document.getElementById('courseFileUrl').value = course.file_url || '';
+
+      toggleCourseFields();
+    }
+  } else {
+    document.getElementById('courseModalTitle').textContent = 'Yangi kurs qo\'shish';
+    toggleCourseFields();
+  }
+
+  modal.classList.add('active');
+}
+
+function closeCourseModal() {
+  document.getElementById('courseModal').classList.remove('active');
+  currentCourseId = null;
+}
+
+function toggleCourseFields() {
+  const type = document.getElementById('courseType').value;
+
+  // Для книги и видео показываем поле для файла
+  const fileUrlGroup = document.getElementById('fileUrlGroup');
+  const lessonsCountGroup = document.getElementById('lessonsCountGroup');
+  const priceMonthlyGroup = document.getElementById('priceMonthlyGroup');
+
+  if (type === 'book' || type === 'video') {
+    fileUrlGroup.style.display = 'block';
+    lessonsCountGroup.style.display = 'none';
+    priceMonthlyGroup.style.display = 'none';
+  } else {
+    fileUrlGroup.style.display = 'none';
+    lessonsCountGroup.style.display = 'block';
+    priceMonthlyGroup.style.display = 'block';
+  }
+}
+
+// Сохранение курса
+document.getElementById('courseForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+
+  const courseData = {
+    title: document.getElementById('courseTitle').value,
+    description: document.getElementById('courseDescription').value,
+    type: document.getElementById('courseType').value,
+    lessons_count: parseInt(document.getElementById('courseLessonsCount').value) || 1,
+    duration: document.getElementById('courseDuration').value,
+    price_full: parseFloat(document.getElementById('coursePriceFull').value) || 0,
+    price_monthly: parseFloat(document.getElementById('coursePriceMonthly').value) || 0,
+    price_single: parseFloat(document.getElementById('coursePriceSingle').value) || 0,
+    file_url: document.getElementById('courseFileUrl').value || null
+  };
+
+  const btn = document.getElementById('saveCourseBtn');
+  btn.classList.add('loading');
+  btn.disabled = true;
+
+  try {
+    const url = currentCourseId ? `/api/courses/${currentCourseId}` : '/api/courses';
+    const method = currentCourseId ? 'PUT' : 'POST';
+
+    const response = await fetch(url, {
+      method: method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(courseData)
+    });
+
+    const result = await response.json();
+
+    if (result.success) {
+      showToast(`✅ Kurs ${currentCourseId ? 'yangilandi' : 'qo\'shildi'}!`, 'success');
+      closeCourseModal();
+      loadCourses();
+    } else {
+      showToast('❌ Xatolik: ' + (result.error || 'Noma\'lum xatolik'), 'error');
+    }
+  } catch (error) {
+    console.error('Ошибка сохранения курса:', error);
+    showToast('❌ Xatolik yuz berdi', 'error');
+  } finally {
+    btn.classList.remove('loading');
+    btn.disabled = false;
+  }
+});
+
+function editCourse(id) {
+  openCourseModal(id);
+}
+
+async function deleteCourse(id) {
+  if (!confirm('Bu kursni o\'chirmoqchimisiz?\n\nBu amalni qaytarib bo\'lmaydi!')) return;
+
+  try {
+    const response = await fetch(`/api/courses/${id}`, { method: 'DELETE' });
+    const result = await response.json();
+
+    if (result.success) {
+      showToast('✅ Kurs o\'chirildi!', 'success');
+      loadCourses();
+    } else {
+      showToast('❌ Xatolik', 'error');
+    }
+  } catch (error) {
+    console.error('Ошибка удаления курса:', error);
+    showToast('❌ Xatolik yuz berdi', 'error');
+  }
+}
+
+// === УРОКИ ===
+async function openLessonsModal(courseId) {
+  currentCourseId = courseId;
+  const course = allCourses.find(c => c.id === courseId);
+
+  document.getElementById('lessonsModalTitle').textContent = `Darslar: ${course.title}`;
+
+  try {
+    const response = await fetch(`/api/courses/${courseId}/lessons`);
+    currentLessons = await response.json();
+
+    displayLessons();
+    document.getElementById('lessonsModal').classList.add('active');
+  } catch (error) {
+    console.error('Ошибка загрузки уроков:', error);
+    showToast('❌ Xatolik yuz berdi', 'error');
+  }
+}
+
+function closeLessonsModal() {
+  document.getElementById('lessonsModal').classList.remove('active');
+  currentCourseId = null;
+  currentLessons = [];
+}
+
+function displayLessons() {
+  const container = document.getElementById('lessonsList');
+
+  if (currentLessons.length === 0) {
+    container.innerHTML = '<p style="text-align: center; color: #6c757d; padding: 20px;">Darslar yo\'q. Qo\'shish uchun tugmani bosing.</p>';
+    return;
+  }
+
+  container.innerHTML = currentLessons.map((lesson, index) => `
+    <div class="lesson-row" data-lesson-id="${lesson.id}">
+      <input type="number" value="${lesson.order_num}" min="1" data-field="order">
+      <input type="text" value="${lesson.title}" data-field="title" placeholder="Dars nomi">
+      <input type="text" value="${lesson.video_url || ''}" data-field="url" placeholder="Video URL">
+      <button type="button" class="btn-icon" onclick="removeLesson(${index})">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"/>
+          <line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+  `).join('');
+}
+
+function addLessonRow() {
+  const newLesson = {
+    id: null,
+    course_id: currentCourseId,
+    order_num: currentLessons.length + 1,
+    title: '',
+    video_url: ''
+  };
+
+  currentLessons.push(newLesson);
+  displayLessons();
+}
+
+function removeLesson(index) {
+  if (confirm('Bu darsni o\'chirmoqchimisiz?')) {
+    currentLessons.splice(index, 1);
+    displayLessons();
+  }
+}
+
+async function saveLessons() {
+  const rows = document.querySelectorAll('.lesson-row');
+  const lessons = [];
+
+  rows.forEach(row => {
+    const id = row.dataset.lessonId !== 'null' ? parseInt(row.dataset.lessonId) : null;
+    const order = row.querySelector('[data-field="order"]').value;
+    const title = row.querySelector('[data-field="title"]').value;
+    const url = row.querySelector('[data-field="url"]').value;
+
+    if (title.trim()) {
+      lessons.push({ id, order_num: parseInt(order), title, video_url: url });
+    }
+  });
+
+  try {
+    // Удаляем старые уроки
+    for (const lesson of currentLessons) {
+      if (lesson.id && !lessons.find(l => l.id === lesson.id)) {
+        await fetch(`/api/lessons/${lesson.id}`, { method: 'DELETE' });
+      }
+    }
+
+    // Сохраняем новые и обновленные
+    for (const lesson of lessons) {
+      if (lesson.id) {
+        await fetch(`/api/lessons/${lesson.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(lesson)
+        });
+      } else {
+        await fetch('/api/lessons', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...lesson, course_id: currentCourseId })
+        });
+      }
+    }
+
+    showToast('✅ Darslar saqlandi!', 'success');
+    closeLessonsModal();
+    loadCourses();
+  } catch (error) {
+    console.error('Ошибка сохранения уроков:', error);
+    showToast('❌ Xatolik yuz berdi', 'error');
+  }
+}
+
+// === ПОЛЬЗОВАТЕЛИ ===
+async function loadUsers() {
+  try {
+    const response = await fetch('/api/users');
+    const users = await response.json();
+
+    displayUsers(users);
+  } catch (error) {
+    console.error('Ошибка загрузки пользователей:', error);
+  }
+}
+
+function displayUsers(users) {
+  const tbody = document.getElementById('usersTableBody');
+  tbody.innerHTML = '';
+
+  if (users.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" class="loading-row"><p>Foydalanuvchilar yo\'q</p></td></tr>';
+    return;
+  }
+
+  users.forEach(u => {
+    const row = `
+      <tr>
+        <td>${u.id}</td>
+        <td>${u.full_name || 'N/A'}</td>
+        <td>@${u.username || '-'}</td>
+        <td><code>${u.telegram_id}</code></td>
+        <td>${u.purchases_count || 0}</td>
+        <td><strong>${(u.total_spent || 0).toLocaleString()}</strong> so'm</td>
+        <td>${formatDate(u.created_at)}</td>
+      </tr>
+    `;
+    tbody.innerHTML += row;
+  });
+}
+
+// Поиск пользователей
+document.getElementById('searchUsers')?.addEventListener('input', (e) => {
+  const search = e.target.value.toLowerCase();
+  const rows = document.querySelectorAll('#usersTableBody tr');
+
+  rows.forEach(row => {
+    const text = row.textContent.toLowerCase();
+    row.style.display = text.includes(search) ? '' : 'none';
+  });
+});
+
+// === АДМИНЫ ===
+async function loadAdmins() {
+  try {
+    const response = await fetch('/api/admins');
+    const admins = await response.json();
+
+    displayAdmins(admins);
+  } catch (error) {
+    console.error('Ошибка загрузки админов:', error);
+  }
+}
+
+function displayAdmins(admins) {
+  const grid = document.getElementById('adminsGrid');
+
+  grid.innerHTML = admins.map(admin => {
+    const initial = admin.full_name.charAt(0).toUpperCase();
+    const isSuperAdmin = admin.id === 1;
+
+    return `
+      <div class="admin-card">
+        <div class="admin-card-header">
+          <div class="admin-avatar">${initial}</div>
+          <div class="admin-info">
+            <h4>${admin.full_name} ${isSuperAdmin ? '⭐' : ''}</h4>
+            <p>@${admin.username}</p>
+          </div>
+        </div>
+        <div class="admin-card-body">
+          <div class="admin-meta">
+            <div class="admin-meta-item">
+              <span>📅</span>
+              <span>Qo'shilgan: ${formatDate(admin.created_at)}</span>
+            </div>
+            ${admin.last_login ? `
+              <div class="admin-meta-item">
+                <span>🕐</span>
+                <span>Oxirgi kirish: ${formatDate(admin.last_login)}</span>
+              </div>
+            ` : ''}
+          </div>
+          ${!isSuperAdmin ? `
+            <button class="btn-danger" onclick="deleteAdmin(${admin.id})" style="width: 100%; font-size: 13px;">
+              O'chirish
+            </button>
+          ` : '<p style="text-align: center; color: #6c757d; font-size: 12px;">Super Admin</p>'}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function openAddAdminModal() {
+  document.getElementById('addAdminModal').classList.add('active');
+  document.getElementById('addAdminForm').reset();
+}
+
+function closeAddAdminModal() {
+  document.getElementById('addAdminModal').classList.remove('active');
+}
+
+document.getElementById('addAdminForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+
+  const data = {
+    username: document.getElementById('adminUsername').value,
+    password: document.getElementById('adminPassword').value,
+    full_name: document.getElementById('adminFullName').value
+  };
+
+  try {
+    const response = await fetch('/api/admins', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+
+    const result = await response.json();
+
+    if (result.success) {
+      showToast('✅ Admin qo\'shildi!', 'success');
+      closeAddAdminModal();
+      loadAdmins();
+    } else {
+      showToast('❌ ' + (result.error || 'Xatolik'), 'error');
+    }
+  } catch (error) {
+    console.error('Ошибка добавления админа:', error);
+    showToast('❌ Xatolik yuz berdi', 'error');
+  }
+});
+
+async function deleteAdmin(id) {
+  if (!confirm('Bu adminni o\'chirmoqchimisiz?')) return;
+
+  try {
+    const response = await fetch(`/api/admins/${id}`, { method: 'DELETE' });
+    const result = await response.json();
+
+    if (result.success) {
+      showToast('✅ Admin o\'chirildi', 'success');
+      loadAdmins();
+    } else {
+      showToast('❌ Xatolik', 'error');
+    }
+  } catch (error) {
+    console.error('Ошибка удаления админа:', error);
+    showToast('❌ Xatolik yuz berdi', 'error');
+  }
+}
+
+// Автообновление
 setInterval(() => {
-    loadPurchases();
+  loadPurchases();
 }, 30000);
 
-// Клавиатурные сокращения
-document.addEventListener('keydown', (e) => {
-    // ESC - закрыть модал
-    if (e.key === 'Escape') {
-        closeRejectModal();
-    }
-
-    // Ctrl/Cmd + R - обновить
-    if ((e.ctrlKey || e.metaKey) && e.key === 'r') {
-        e.preventDefault();
-        loadPurchases();
-    }
-});
-
-// Закрытие модала по клику вне его
-document.getElementById('rejectModal').addEventListener('click', (e) => {
-    if (e.target.classList.contains('modal-overlay')) {
-        closeRejectModal();
-    }
-});
-
-// Инициализация при загрузке
+// Инициализация
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('🎨 Admin Panel загружен');
-    checkBotStatus();
-    loadStats();
-    loadPurchases();
-    loadCourses();
+  console.log('🎨 Admin Panel загружен');
+  loadStats();
+  loadPurchases();
+  loadCourses();
 
-    // Показываем приветствие
-    setTimeout(() => {
-        showToast('👋 Xush kelibsiz, Administrator!', 'success');
-    }, 500);
+  setTimeout(() => {
+    showToast('👋 Xush kelibsiz!', 'success');
+  }, 500);
 });
-
-// Обработка ошибок загрузки
-window.addEventListener('error', (e) => {
-    console.error('Глобальная ошибка:', e);
-});
-
-// Показываем индикатор загрузки при переключении табов
-const originalSwitchTab = switchTab;
-switchTab = function (tabName) {
-    originalSwitchTab(tabName);
-
-    // Добавляем анимацию при переключении
-    const content = document.getElementById(tabName);
-    if (content) {
-        content.style.opacity = '0';
-        setTimeout(() => {
-            content.style.transition = 'opacity 0.3s ease';
-            content.style.opacity = '1';
-        }, 50);
-    }
-};

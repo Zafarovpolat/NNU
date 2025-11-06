@@ -28,11 +28,12 @@ module.exports = (bot) => {
         });
     });
 
-    // Обработка ввода имени (только для состояния waiting_name)
+    // Обработка ввода имени
     bot.on('text', (msg) => {
         const chatId = msg.chat.id;
         const telegramId = msg.from.id;
         const text = msg.text;
+        const username = msg.from.username || '';
 
         // Пропускаем команды и кнопки меню
         if (!text || text.startsWith('/') || text.startsWith('📚') ||
@@ -44,7 +45,7 @@ module.exports = (bot) => {
         db.getUser(telegramId, (err, user) => {
             if (user && user.state === 'waiting_name') {
                 console.log(`✅ Сохранение имени: ${text}`);
-                db.updateUserName(telegramId, text, () => {
+                db.updateUserName(telegramId, text, username, () => {
                     bot.sendMessage(
                         chatId,
                         `Rahmat, ${text}! 😊\n\nEndi siz quyidagi bo'limlardan foydalanishingiz mumkin:`,

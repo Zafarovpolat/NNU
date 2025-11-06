@@ -36,21 +36,21 @@ module.exports = {
     paymentTypes: (courseId, course) => {
         const buttons = [];
 
-        if (course.price_full) {
+        if (course.price_full && course.price_full > 0) {
             buttons.push([{
                 text: `To'liq kurs - ${course.price_full.toLocaleString()} so'm`,
                 callback_data: `pay_full_${courseId}`
             }]);
         }
 
-        if (course.price_monthly) {
+        if (course.price_monthly && course.price_monthly > 0) {
             buttons.push([{
                 text: `Oylik to'lov - ${course.price_monthly.toLocaleString()} so'm/oy`,
                 callback_data: `pay_monthly_${courseId}`
             }]);
         }
 
-        if (course.price_single && course.type !== 'course') {
+        if (course.price_single && course.price_single > 0 && course.type !== 'course') {
             buttons.push([{
                 text: `Bir martalik - ${course.price_single.toLocaleString()} so'm`,
                 callback_data: `pay_single_${courseId}`
@@ -66,15 +66,6 @@ module.exports = {
         };
     },
 
-    confirmPayment: (purchaseId) => ({
-        reply_markup: {
-            inline_keyboard: [
-                [{ text: '✅ To\'lovni tasdiqlash', callback_data: `confirm_${purchaseId}` }],
-                [{ text: '◀️ Orqaga', callback_data: 'back_main' }]
-            ]
-        }
-    }),
-
     settingsMenu: {
         reply_markup: {
             inline_keyboard: [
@@ -85,10 +76,16 @@ module.exports = {
     },
 
     myCoursesList: (purchases) => {
-        const buttons = purchases.map(p => [{
-            text: `${p.title} ${p.type === 'course' ? '📚' : p.type === 'book' ? '📖' : '🎥'}`,
-            callback_data: `mycourse_${p.course_id}`
-        }]);
+        const buttons = purchases.map(p => {
+            const icon = p.type === 'course' ? '📚' : p.type === 'book' ? '📖' : '🎥';
+            const text = `${icon} ${p.title}${p.expiryInfo || ''}`;
+
+            return [{
+                text: text,
+                callback_data: `mycourse_${p.course_id}`
+            }];
+        });
+
         buttons.push([{ text: '◀️ Orqaga', callback_data: 'back_main' }]);
 
         return {

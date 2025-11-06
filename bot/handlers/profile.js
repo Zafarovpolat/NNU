@@ -28,10 +28,23 @@ module.exports = (bot) => {
                     return;
                 }
 
+                // Формируем список с информацией о сроке действия
+                const purchasesWithExpiry = purchases.map(p => {
+                    let expiryInfo = '';
+                    if (p.days_left !== null) {
+                        if (p.days_left > 0) {
+                            expiryInfo = ` (${p.days_left} kun qoldi)`;
+                        } else {
+                            expiryInfo = ` (muddati tugagan)`;
+                        }
+                    }
+                    return { ...p, expiryInfo };
+                });
+
                 bot.sendMessage(
                     chatId,
                     '🎓 Sizning kurslaringiz:',
-                    menus.myCoursesList(purchases)
+                    menus.myCoursesList(purchasesWithExpiry)
                 );
             });
         }
@@ -52,6 +65,7 @@ module.exports = (bot) => {
     bot.on('callback_query', (query) => {
         const chatId = query.message.chat.id;
         const data = query.data;
+        const telegramId = query.from.id;
 
         if (data.startsWith('mycourse_')) {
             const courseId = parseInt(data.split('_')[1]);
@@ -62,6 +76,53 @@ module.exports = (bot) => {
                     return;
                 }
 
+                const icon = course.type === 'course' ? '📚' :
+                    course.type === 'book' ? '📖' : '🎥';
+
+                // Для КНИГИ - отправляем только файл
+                if (course.type === 'book') {
+                    if (course.file_url) {
+                        const message = `${icon} <b>${course.title}</b>\n\n` +
+                            `📖 Kitobni yuklab olish:\n` +
+                            `${course.file_url}`;
+
+                        bot.sendMessage(chatId, message, {
+                            parse_mode: 'HTML',
+                            disable_web_page_preview: false
+                        });
+                    } else {
+                        bot.answerCallbackQuery(query.id, {
+                            text: 'Kitob fayli topilmadi',
+                            show_alert: true
+                        });
+                    }
+                    bot.answerCallbackQuery(query.id);
+                    return;
+                }
+
+                // Для ОДНОРАЗОВОГО ВИДЕО
+                if (course.type === 'video') {
+                    if (course.file_url) {
+                        const message = `${icon} <b>${course.title}</b>\n\n` +
+                            `🎥 Video:\n` +
+                            `${course.file_url}\n\n` +
+                            `⏱ Davomiyligi: ${course.duration}`;
+
+                        bot.sendMessage(chatId, message, {
+                            parse_mode: 'HTML',
+                            disable_web_page_preview: false
+                        });
+                    } else {
+                        bot.answerCallbackQuery(query.id, {
+                            text: 'Video topilmadi',
+                            show_alert: true
+                        });
+                    }
+                    bot.answerCallbackQuery(query.id);
+                    return;
+                }
+
+                // Для КУРСА - отправляем список уроков
                 db.getLessonsByCourse(courseId, (err, lessons) => {
                     if (err) {
                         bot.answerCallbackQuery(query.id, { text: 'Xatolik yuz berdi' });
@@ -76,29 +137,26 @@ module.exports = (bot) => {
                         return;
                     }
 
-                    let message = `📚 ${course.title}\n\n`;
+                    // Формируем одно сообщение со списком уроков
+                    let message = `${icon} <b>${course.title}</b>\n\n`;
+                    message += `📚 Darslar ro'yxati:\n\n`;
 
                     lessons.forEach((lesson, index) => {
-                        message += `${index + 1}. ${lesson.title}\n`;
+                        message += `<b>${index + 1}-DARS:</b> `;
+                        if (lesson.video_url) {
+                            message += `<a href="${lesson.video_url}">${lesson.title}</a>\n`;
+                        } else {
+                            message += `${lesson.title}\n`;
+                        }
                     });
 
-                    bot.sendMessage(chatId, message);
+                    message += `\n━━━━━━━━━━━━━━━━━━━━━━\n`;
+                    message += `🎓 Jami darslar: ${lessons.length}\n`;
+                    message += `⏱ Davomiyligi: ${course.duration}`;
 
-                    // Отправка видео
-                    lessons.forEach(lesson => {
-                        if (lesson.video_url) {
-                            // Проверяем, это file_id или URL
-                            if (lesson.video_url.startsWith('http')) {
-                                bot.sendMessage(chatId, `🎥 ${lesson.title}\n${lesson.video_url}`);
-                            } else {
-                                bot.sendVideo(chatId, lesson.video_url, {
-                                    caption: lesson.title
-                                }).catch(err => {
-                                    console.error('Ошибка отправки видео:', err);
-                                    bot.sendMessage(chatId, `🎥 ${lesson.title}\n${lesson.video_url}`);
-                                });
-                            }
-                        }
+                    bot.sendMessage(chatId, message, {
+                        parse_mode: 'HTML',
+                        disable_web_page_preview: true // Чтобы не загружались превью ссылок
                     });
 
                     bot.answerCallbackQuery(query.id);

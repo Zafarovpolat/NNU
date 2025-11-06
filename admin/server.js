@@ -2,6 +2,9 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const path = require('path');
+const jwt = require('jsonwebtoken');
+const multer = require('multer');
+const fs = require('fs');
 const config = require('../config');
 const db = require('../bot/database/db');
 
@@ -11,33 +14,278 @@ app.use(cors());
 app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Импортируем бота
-let bot = null;
-
-// Функция для получения экземпляра бота
-function getBot() {
-    if (!bot) {
-        try {
-            bot = require('../bot/bot');
-            console.log('✅ Bot подключен к админке');
-        } catch (error) {
-            console.error('❌ Ошибка подключения бота:', error.message);
-        }
-    }
-    return bot;
+// Создаем директорию для загрузок
+const uploadsDir = path.join(__dirname, '../uploads');
+if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
-// API маршруты
+// Настройка multer для загрузки файлов
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        cb(null, uploadsDir);
+    },
+    filename: (req, file, cb) => {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        cb(null, uniqueSuffix + '-' + file.originalname);
+    }
+});
+
+const upload = multer({
+    storage: storage,
+    limits: { fileSize: 100 * 1024 * 1024 } // 100MB
+});
+
+// JWT секрет
+const JWT_SECRET = process.env.JWT_SECRET || 'najot-nur-secret-key-change-this';
+
+// Middleware для проверки токена
+const authenticateToken = (req, res, next) => {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+
+    if (!token) {
+        return res.status(401).json({ error: 'Токен не предоставлен' });
+    }
+
+    jwt.verify(token, JWT_SECRET, (err, admin) => {
+        if (err) {
+            return res.status(403).json({ error: 'Недействительный токен' });
+        }
+        req.admin = admin;
+        next();
+    });
+};
+
+// Статические файлы для загрузок
+app.use('/uploads', express.static(uploadsDir));
+
+// === АВТОРИЗАЦИЯ ===
+
+// Login page
+app.get('/login', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public/login.html'));
+});
+
+// Login API
+app.post('/api/auth/login', (req, res) => {
+    const { username, password } = req.body;
+
+    if (!username || !password) {
+        return res.status(400).json({ error: 'Username и password обязательны' });
+    }
+
+    db.verifyAdmin(username, password, (err, admin) => {
+        if (err) {
+            console.error('Login error:', err);
+            return res.status(500).json({ error: 'Ошибка сервера' });
+        }
+
+        if (!admin) {
+            return res.status(401).json({ error: 'Неверный логин или пароль' });
+        }
+
+        // Создаем JWT токен
+        const token = jwt.sign(
+            { id: admin.id, username: admin.username },
+            JWT_SECRET,
+            { expiresIn: '7d' }
+        );
+
+        res.json({
+            success: true,
+            token,
+            admin: {
+                id: admin.id,
+                username: admin.username,
+                full_name: admin.full_name
+            }
+        });
+    });
+});
+
+// Verify token
+app.get('/api/auth/verify', authenticateToken, (req, res) => {
+    res.json({ success: true, admin: req.admin });
+});
+
+// === АДМИНЫ ===
+
+// Получить всех админов
+app.get('/api/admins', authenticateToken, (req, res) => {
+    db.getAllAdmins((err, admins) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(admins);
+    });
+});
+
+// Создать нового админа
+app.post('/api/admins', authenticateToken, (req, res) => {
+    const { username, password, full_name } = req.body;
+
+    if (!username || !password || !full_name) {
+        return res.status(400).json({ error: 'Все поля обязательны' });
+    }
+
+    db.createAdmin(username, password, full_name, req.admin.id, function (err) {
+        if (err) {
+            if (err.message.includes('UNIQUE')) {
+                return res.status(400).json({ error: 'Такой username уже существует' });
+            }
+            return res.status(500).json({ error: err.message });
+        }
+        res.json({ success: true, id: this.lastID });
+    });
+});
+
+// Удалить админа
+app.delete('/api/admins/:id', authenticateToken, (req, res) => {
+    const { id } = req.params;
+
+    if (parseInt(id) === req.admin.id) {
+        return res.status(400).json({ error: 'Нельзя удалить самого себя' });
+    }
+
+    db.deleteAdmin(id, (err) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ success: true });
+    });
+});
+
+// Изменить пароль
+app.post('/api/admins/change-password', authenticateToken, (req, res) => {
+    const { newPassword } = req.body;
+
+    if (!newPassword || newPassword.length < 6) {
+        return res.status(400).json({ error: 'Пароль должен быть не менее 6 символов' });
+    }
+
+    db.changePassword(req.admin.id, newPassword, (err) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ success: true });
+    });
+});
+
+// === КУРСЫ ===
+
+// Получить все курсы
 app.get('/api/courses', (req, res) => {
-    db.getAllCourses(null, (err, courses) => {
+    const { type } = req.query;
+    db.getAllCourses(type, (err, courses) => {
         if (err) return res.status(500).json({ error: err.message });
         res.json(courses);
     });
 });
 
+// Получить курс по ID
+app.get('/api/courses/:id', (req, res) => {
+    db.getCourse(req.params.id, (err, course) => {
+        if (err) return res.status(500).json({ error: err.message });
+        if (!course) return res.status(404).json({ error: 'Курс не найден' });
+        res.json(course);
+    });
+});
+
+// Создать курс
+app.post('/api/courses', authenticateToken, upload.single('cover'), (req, res) => {
+    const courseData = {
+        title: req.body.title,
+        description: req.body.description,
+        type: req.body.type,
+        lessons_count: parseInt(req.body.lessons_count) || 0,
+        duration: req.body.duration,
+        price_full: parseFloat(req.body.price_full) || 0,
+        price_monthly: parseFloat(req.body.price_monthly) || 0,
+        price_single: parseFloat(req.body.price_single) || 0,
+        file_url: req.body.file_url || null
+    };
+
+    db.createCourse(courseData, function (err) {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ success: true, id: this.lastID });
+    });
+});
+
+// Обновить курс
+app.put('/api/courses/:id', authenticateToken, (req, res) => {
+    const courseData = {
+        title: req.body.title,
+        description: req.body.description,
+        type: req.body.type,
+        lessons_count: parseInt(req.body.lessons_count) || 0,
+        duration: req.body.duration,
+        price_full: parseFloat(req.body.price_full) || 0,
+        price_monthly: parseFloat(req.body.price_monthly) || 0,
+        price_single: parseFloat(req.body.price_single) || 0,
+        file_url: req.body.file_url || null
+    };
+
+    db.updateCourse(req.params.id, courseData, (err) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ success: true });
+    });
+});
+
+// Удалить курс
+app.delete('/api/courses/:id', authenticateToken, (req, res) => {
+    db.deleteCourse(req.params.id, (err) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ success: true });
+    });
+});
+
+// === УРОКИ ===
+
+// Получить уроки курса
+app.get('/api/courses/:id/lessons', (req, res) => {
+    db.getLessonsByCourse(req.params.id, (err, lessons) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(lessons);
+    });
+});
+
+// Создать урок
+app.post('/api/lessons', authenticateToken, (req, res) => {
+    const { course_id, title, video_url, order_num } = req.body;
+
+    db.createLesson(course_id, title, video_url, order_num, function (err) {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ success: true, id: this.lastID });
+    });
+});
+
+// Обновить урок
+app.put('/api/lessons/:id', authenticateToken, (req, res) => {
+    const { title, video_url, order_num } = req.body;
+
+    db.updateLesson(req.params.id, title, video_url, order_num, (err) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ success: true });
+    });
+});
+
+// Удалить урок
+app.delete('/api/lessons/:id', authenticateToken, (req, res) => {
+    db.deleteLesson(req.params.id, (err) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ success: true });
+    });
+});
+
+// === ПОЛЬЗОВАТЕЛИ ===
+
+app.get('/api/users', authenticateToken, (req, res) => {
+    db.getAllUsers((err, users) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(users);
+    });
+});
+
+// === ПОКУПКИ ===
+
 app.get('/api/purchases', (req, res) => {
     db.db.all(
-        `SELECT p.*, u.full_name, u.telegram_id, c.title as course_title, c.type as course_type
+        `SELECT p.*, u.full_name, u.telegram_id, u.username, c.title as course_title, c.type as course_type
      FROM purchases p
      JOIN users u ON p.user_id = u.id
      JOIN courses c ON p.course_id = c.id
@@ -52,49 +300,35 @@ app.get('/api/purchases', (req, res) => {
     );
 });
 
-app.post('/api/purchases/:id/confirm', async (req, res) => {
+// Подтвердить оплату
+app.post('/api/purchases/:id/confirm', authenticateToken, (req, res) => {
     const { id } = req.params;
 
-    console.log(`Подтверждение покупки #${id}`);
+    db.getPurchaseWithDetails(id, (err, purchase) => {
+        if (err || !purchase) {
+            return res.status(500).json({ error: 'Покупка не найдена' });
+        }
 
-    try {
-        // Получаем детали покупки
-        db.getPurchaseWithDetails(id, async (err, purchase) => {
+        db.confirmPayment(id, (err) => {
             if (err) {
-                console.error('Ошибка получения покупки:', err);
-                return res.status(500).json({ error: 'Ошибка получения покупки: ' + err.message });
+                return res.status(500).json({ error: err.message });
             }
 
-            if (!purchase) {
-                console.error('Покупка не найдена:', id);
-                return res.status(404).json({ error: 'Покупка не найдена' });
+            // Отправляем уведомление пользователю
+            const bot = global.telegramBot;
+
+            if (!bot) {
+                return res.json({
+                    success: true,
+                    warning: true,
+                    message: 'Бот не доступен для отправки уведомления'
+                });
             }
 
-            console.log('Покупка найдена:', purchase);
+            const icon = purchase.course_type === 'course' ? '📚' :
+                purchase.course_type === 'book' ? '📖' : '🎥';
 
-            // Подтверждаем оплату в БД
-            db.confirmPayment(id, async (err) => {
-                if (err) {
-                    console.error('Ошибка подтверждения в БД:', err);
-                    return res.status(500).json({ error: 'Ошибка подтверждения: ' + err.message });
-                }
-
-                console.log('Покупка подтверждена в БД');
-
-                // Отправляем уведомление пользователю
-                const telegramBot = getBot();
-
-                if (!telegramBot) {
-                    console.error('Бот не доступен');
-                    return res.status(500).json({
-                        error: 'Бот не доступен. Запустите сначала бота: npm run bot'
-                    });
-                }
-
-                const icon = purchase.course_type === 'course' ? '📚' :
-                    purchase.course_type === 'book' ? '📖' : '🎥';
-
-                const message = `🎉 Tabriklaymiz!
+            const message = `🎉 Tabriklaymiz!
 
 ✅ Sizning to'lovingiz tasdiqlandi!
 
@@ -105,82 +339,59 @@ Kursni ko'rish uchun "🎓 Mening kurslarim" bo'limiga o'ting.
 
 Omad tilaymiz! 🚀`;
 
-                try {
-                    await telegramBot.sendMessage(purchase.telegram_id, message, {
-                        parse_mode: 'HTML',
-                        reply_markup: {
-                            keyboard: [
-                                ['📚 Kurslar', '📖 Kitoblar'],
-                                ['🎥 Video kurslar', '🎓 Mening kurslarim'],
-                                ['⚙️ Sozlamalar']
-                            ],
-                            resize_keyboard: true
-                        }
-                    });
-
-                    console.log(`✅ Уведомление отправлено пользователю ${purchase.telegram_id}`);
-
-                    res.json({
-                        success: true,
-                        message: 'Оплата подтверждена, пользователю отправлено уведомление'
-                    });
-                } catch (sendError) {
-                    console.error('Ошибка отправки сообщения:', sendError);
-
-                    // Даже если не удалось отправить сообщение, оплата подтверждена
-                    res.json({
-                        success: true,
-                        message: 'Оплата подтверждена, но не удалось отправить уведомление: ' + sendError.message,
-                        warning: true
-                    });
+            bot.sendMessage(purchase.telegram_id, message, {
+                parse_mode: 'HTML',
+                reply_markup: {
+                    keyboard: [
+                        ['📚 Kurslar', '📖 Kitoblar'],
+                        ['🎥 Video kurslar', '🎓 Mening kurslarim'],
+                        ['⚙️ Sozlamalar']
+                    ],
+                    resize_keyboard: true
                 }
+            }).then(() => {
+                res.json({ success: true });
+            }).catch(sendError => {
+                console.error('Ошибка отправки уведомления:', sendError);
+                res.json({
+                    success: true,
+                    warning: true,
+                    message: 'Оплата подтверждена, но не удалось отправить уведомление'
+                });
             });
         });
-    } catch (error) {
-        console.error('Общая ошибка:', error);
-        res.status(500).json({ error: 'Внутренняя ошибка: ' + error.message });
-    }
+    });
 });
 
-app.post('/api/purchases/:id/reject', async (req, res) => {
+// Отклонить оплату
+app.post('/api/purchases/:id/reject', authenticateToken, (req, res) => {
     const { id } = req.params;
     const { reason } = req.body;
 
-    console.log(`Отклонение покупки #${id}`);
+    db.getPurchaseWithDetails(id, (err, purchase) => {
+        if (err || !purchase) {
+            return res.status(500).json({ error: 'Покупка не найдена' });
+        }
 
-    try {
-        // Получаем детали покупки
-        db.getPurchaseWithDetails(id, async (err, purchase) => {
-            if (err || !purchase) {
-                console.error('Ошибка получения покупки:', err);
-                return res.status(500).json({ error: 'Покупка не найдена' });
-            }
+        db.db.run(
+            'UPDATE purchases SET status = "rejected" WHERE id = ?',
+            [id],
+            (err) => {
+                if (err) {
+                    return res.status(500).json({ error: err.message });
+                }
 
-            console.log('Покупка найдена:', purchase);
+                const bot = global.telegramBot;
 
-            // Отклоняем оплату
-            db.db.run(
-                'UPDATE purchases SET status = "rejected" WHERE id = ?',
-                [id],
-                async (err) => {
-                    if (err) {
-                        console.error('Ошибка отклонения в БД:', err);
-                        return res.status(500).json({ error: err.message });
-                    }
+                if (!bot) {
+                    return res.json({
+                        success: true,
+                        warning: true,
+                        message: 'Бот не доступен'
+                    });
+                }
 
-                    console.log('Покупка отклонена в БД');
-
-                    // Отправляем уведомление пользователю
-                    const telegramBot = getBot();
-
-                    if (!telegramBot) {
-                        console.error('Бот не доступен');
-                        return res.status(500).json({
-                            error: 'Бот не доступен. Запустите сначала бота: npm run bot'
-                        });
-                    }
-
-                    const message = `❌ To'lov rad etildi
+                const message = `❌ To'lov rad etildi
 
 📝 Buyurtma raqami: #${id}
 📚 Kurs: ${purchase.course_title}
@@ -188,36 +399,24 @@ ${reason ? `\n📋 Sabab: ${reason}` : ''}
 
 Iltimos, to'lovni qaytadan amalga oshiring yoki qo'llab-quvvatlash xizmatiga murojaat qiling.`;
 
-                    try {
-                        await telegramBot.sendMessage(purchase.telegram_id, message, {
-                            parse_mode: 'HTML'
-                        });
-
-                        console.log(`✅ Уведомление об отклонении отправлено пользователю ${purchase.telegram_id}`);
-
-                        res.json({
-                            success: true,
-                            message: 'Оплата отклонена, пользователю отправлено уведомление'
-                        });
-                    } catch (sendError) {
-                        console.error('Ошибка отправки сообщения:', sendError);
-
-                        res.json({
-                            success: true,
-                            message: 'Оплата отклонена, но не удалось отправить уведомление: ' + sendError.message,
-                            warning: true
-                        });
-                    }
-                }
-            );
-        });
-    } catch (error) {
-        console.error('Общая ошибка:', error);
-        res.status(500).json({ error: 'Внутренняя ошибка: ' + error.message });
-    }
+                bot.sendMessage(purchase.telegram_id, message, {
+                    parse_mode: 'HTML'
+                }).then(() => {
+                    res.json({ success: true });
+                }).catch(sendError => {
+                    res.json({
+                        success: true,
+                        warning: true,
+                        message: 'Оплата отклонена, но не удалось отправить уведомление'
+                    });
+                });
+            }
+        );
+    });
 });
 
-// Статистика
+// === СТАТИСТИКА ===
+
 app.get('/api/stats', (req, res) => {
     const stats = {};
 
@@ -253,18 +452,36 @@ app.get('/api/stats', (req, res) => {
     });
 });
 
+// === ЗАГРУЗКА ФАЙЛОВ ===
+
+app.post('/api/upload', authenticateToken, upload.single('file'), (req, res) => {
+    if (!req.file) {
+        return res.status(400).json({ error: 'Файл не загружен' });
+    }
+
+    const fileUrl = `/uploads/${req.file.filename}`;
+    res.json({ success: true, url: fileUrl, filename: req.file.filename });
+});
+
 // Проверка статуса бота
 app.get('/api/bot-status', (req, res) => {
-    const telegramBot = getBot();
+    const telegramBot = global.telegramBot;
     res.json({
         connected: !!telegramBot,
-        message: telegramBot ? 'Бот подключен' : 'Бот не подключен. Запустите: npm run bot'
+        message: telegramBot ? 'Бот подключен' : 'Бот не подключен'
     });
 });
 
+// Главная страница - редирект на login если не авторизован
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public/index.html'));
+});
+
+// Запуск сервера
 const server = app.listen(config.ADMIN_PORT, () => {
     console.log(`✅ Admin panel: http://localhost:${config.ADMIN_PORT}`);
-    console.log(`⚠️  Убедитесь, что бот запущен: npm run bot`);
+    console.log(`📝 Default login: admin / admin123`);
+    console.log(`⚠️  Измените пароль после первого входа!`);
 });
 
 module.exports = app;

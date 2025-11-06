@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Najot Nur - Kirish</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Poppins:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: linear-gradient(135deg, #8b1538 0%, #6b0f2a 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .login-container {
+      background: white;
+      border-radius: 24px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      overflow: hidden;
+      width: 100%;
+      max-width: 440px;
+      animation: slideUp 0.5s ease;
+    }
+
+    @keyframes slideUp {
+      from {
+        opacity: 0;
+        transform: translateY(30px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .login-header {
+      background: linear-gradient(135deg, #8b1538 0%, #6b0f2a 100%);
+      padding: 48px 40px;
+      text-align: center;
+      color: white;
+    }
+
+    .logo {
+      width: 80px;
+      height: 80px;
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 20px;
+      font-size: 36px;
+      backdrop-filter: blur(10px);
+    }
+
+    .login-header h1 {
+      font-family: 'Poppins', sans-serif;
+      font-size: 28px;
+      margin-bottom: 8px;
+      font-weight: 700;
+    }
+
+    .login-header p {
+      opacity: 0.9;
+      font-size: 14px;
+    }
+
+    .login-body {
+      padding: 40px;
+    }
+
+    .form-group {
+      margin-bottom: 24px;
+    }
+
+    .form-group label {
+      display: block;
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: #212529;
+      font-size: 14px;
+    }
+
+    .form-group input {
+      width: 100%;
+      padding: 14px 16px;
+      border: 2px solid #e9ecef;
+      border-radius: 12px;
+      font-size: 15px;
+      transition: all 0.3s;
+      font-family: 'Inter', sans-serif;
+    }
+
+    .form-group input:focus {
+      outline: none;
+      border-color: #8b1538;
+      box-shadow: 0 0 0 4px rgba(139, 21, 56, 0.1);
+    }
+
+    .btn-login {
+      width: 100%;
+      padding: 16px;
+      background: linear-gradient(135deg, #8b1538 0%, #6b0f2a 100%);
+      color: white;
+      border: none;
+      border-radius: 12px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+      font-family: 'Inter', sans-serif;
+    }
+
+    .btn-login:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(139, 21, 56, 0.3);
+    }
+
+    .btn-login:active {
+      transform: translateY(0);
+    }
+
+    .btn-login:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .error-message {
+      background: #f8d7da;
+      color: #721c24;
+      padding: 12px 16px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      font-size: 14px;
+      display: none;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .error-message.show {
+      display: flex;
+    }
+
+    .loader {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 3px solid rgba(255, 255, 255, 0.3);
+      border-radius: 50%;
+      border-top-color: white;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .password-toggle {
+      position: relative;
+    }
+
+    .password-toggle button {
+      position: absolute;
+      right: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      color: #6c757d;
+      cursor: pointer;
+      padding: 4px 8px;
+      font-size: 14px;
+    }
+
+    @media (max-width: 480px) {
+      .login-header {
+        padding: 32px 24px;
+      }
+
+      .login-body {
+        padding: 24px;
+      }
+
+      .logo {
+        width: 64px;
+        height: 64px;
+        font-size: 28px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="login-container">
+    <div class="login-header">
+      <div class="logo">🎓</div>
+      <h1>Najot Nur</h1>
+      <p>Admin Panel</p>
+    </div>
+
+    <div class="login-body">
+      <div class="error-message" id="errorMessage">
+        <span>❌</span>
+        <span id="errorText"></span>
+      </div>
+
+      <form id="loginForm">
+        <div class="form-group">
+          <label for="username">Foydalanuvchi nomi</label>
+          <input 
+            type="text" 
+            id="username" 
+            name="username" 
+            autocomplete="username"
+            required 
+            autofocus
+            placeholder="admin"
+          >
+        </div>
+
+        <div class="form-group">
+          <label for="password">Parol</label>
+          <div class="password-toggle">
+            <input 
+              type="password" 
+              id="password" 
+              name="password" 
+              autocomplete="current-password"
+              required
+              placeholder="••••••••"
+            >
+            <button type="button" id="togglePassword">👁️</button>
+          </div>
+        </div>
+
+        <button type="submit" class="btn-login" id="loginBtn">
+          Kirish
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    const loginForm = document.getElementById('loginForm');
+    const loginBtn = document.getElementById('loginBtn');
+    const errorMessage = document.getElementById('errorMessage');
+    const errorText = document.getElementById('errorText');
+    const togglePassword = document.getElementById('togglePassword');
+    const passwordInput = document.getElementById('password');
+
+    // Toggle password visibility
+    togglePassword.addEventListener('click', () => {
+      const type = passwordInput.type === 'password' ? 'text' : 'password';
+      passwordInput.type = type;
+      togglePassword.textContent = type === 'password' ? '👁️' : '🙈';
+    });
+
+    // Handle login
+    loginForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const username = document.getElementById('username').value;
+      const password = document.getElementById('password').value;
+      
+      // Hide previous errors
+      errorMessage.classList.remove('show');
+      
+      // Disable button and show loader
+      loginBtn.disabled = true;
+      loginBtn.innerHTML = '<span class="loader"></span> Kirish...';
+      
+      try {
+        const response = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ username, password })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+          // Save token
+          localStorage.setItem('admin_token', data.token);
+          localStorage.setItem('admin_name', data.admin.full_name);
+          
+          // Redirect to dashboard
+          window.location.href = '/';
+        } else {
+          // Show error
+          errorText.textContent = data.error || 'Noto\'g\'ri login yoki parol';
+          errorMessage.classList.add('show');
+          
+          // Re-enable button
+          loginBtn.disabled = false;
+          loginBtn.textContent = 'Kirish';
+        }
+      } catch (error) {
+        console.error('Login error:', error);
+        errorText.textContent = 'Xatolik yuz berdi. Qaytadan urinib ko\'ring.';
+        errorMessage.classList.add('show');
+        
+        loginBtn.disabled = false;
+        loginBtn.textContent = 'Kirish';
+      }
+    });
+
+    // Check if already logged in
+    if (localStorage.getItem('admin_token')) {
+      window.location.href = '/';
+    }
+  </script>
+</body>
+</html>

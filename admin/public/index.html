@@ -1,22 +1,26 @@
 <!DOCTYPE html>
 <html lang="uz">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Najot Nur - Admin Panel</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Poppins:wght@400;500;600;700&display=swap"
+    rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
+
 <body>
   <div class="sidebar">
     <div class="logo">
       <div class="logo-icon">
         <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
-          <circle cx="20" cy="20" r="18" fill="white" opacity="0.2"/>
-          <path d="M20 10L25 15L20 20L15 15L20 10Z" fill="white"/>
-          <path d="M20 20L25 25L20 30L15 25L20 20Z" fill="white" opacity="0.7"/>
+          <circle cx="20" cy="20" r="18" fill="white" opacity="0.2" />
+          <path d="M20 10L25 15L20 20L15 15L20 10Z" fill="white" />
+          <path d="M20 20L25 25L20 30L15 25L20 20Z" fill="white" opacity="0.7" />
         </svg>
       </div>
       <div class="logo-text">
@@ -28,19 +32,19 @@
     <nav class="nav-menu">
       <button class="nav-btn active" data-tab="dashboard">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <rect x="3" y="3" width="7" height="7"/>
-          <rect x="14" y="3" width="7" height="7"/>
-          <rect x="14" y="14" width="7" height="7"/>
-          <rect x="3" y="14" width="7" height="7"/>
+          <rect x="3" y="3" width="7" height="7" />
+          <rect x="14" y="3" width="7" height="7" />
+          <rect x="14" y="14" width="7" height="7" />
+          <rect x="3" y="14" width="7" height="7" />
         </svg>
         <span>Dashboard</span>
       </button>
 
       <button class="nav-btn" data-tab="purchases">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="9" cy="21" r="1"/>
-          <circle cx="20" cy="21" r="1"/>
-          <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
+          <circle cx="9" cy="21" r="1" />
+          <circle cx="20" cy="21" r="1" />
+          <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
         </svg>
         <span>To'lovlar</span>
         <span class="badge" id="pendingBadge">0</span>
@@ -48,20 +52,29 @@
 
       <button class="nav-btn" data-tab="courses">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>
-          <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
+          <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+          <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
         </svg>
         <span>Kurslar</span>
       </button>
 
       <button class="nav-btn" data-tab="users">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-          <circle cx="9" cy="7" r="4"/>
-          <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-          <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+          <circle cx="9" cy="7" r="4" />
+          <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+          <path d="M16 3.13a4 4 0 0 1 0 7.75" />
         </svg>
         <span>Foydalanuvchilar</span>
+      </button>
+
+      <button class="nav-btn" data-tab="admins">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 2L2 7l10 5 10-5-10-5z" />
+          <path d="M2 17l10 5 10-5" />
+          <path d="M2 12l10 5 10-5" />
+        </svg>
+        <span>Adminlar</span>
       </button>
     </nav>
 
@@ -69,10 +82,14 @@
       <div class="user-info">
         <div class="user-avatar">A</div>
         <div class="user-details">
-          <p class="user-name">Administrator</p>
+          <p class="user-name" id="adminName">Administrator</p>
           <p class="user-role">Super Admin</p>
         </div>
       </div>
+      <button class="btn-logout" onclick="logout()"
+        style="margin-top: 12px; width: 100%; padding: 8px; background: rgba(255,255,255,0.1); border: none; color: white; border-radius: 8px; cursor: pointer;">
+        Chiqish
+      </button>
     </div>
   </div>
 
@@ -81,9 +98,9 @@
       <div class="header-left">
         <button class="menu-toggle" id="menuToggle">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="3" y1="12" x2="21" y2="12"/>
-            <line x1="3" y1="6" x2="21" y2="6"/>
-            <line x1="3" y1="18" x2="21" y2="18"/>
+            <line x1="3" y1="12" x2="21" y2="12" />
+            <line x1="3" y1="6" x2="21" y2="6" />
+            <line x1="3" y1="18" x2="21" y2="18" />
           </svg>
         </button>
         <h1 id="pageTitle">Dashboard</h1>
@@ -91,14 +108,14 @@
       <div class="header-right">
         <button class="icon-btn" onclick="loadPurchases()">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="23 4 23 10 17 10"/>
-            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+            <polyline points="23 4 23 10 17 10" />
+            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
           </svg>
         </button>
         <button class="icon-btn">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
-            <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+            <path d="M13.73 21a2 2 0 0 1-3.46 0" />
           </svg>
         </button>
       </div>
@@ -110,10 +127,10 @@
         <div class="stat-card">
           <div class="stat-icon blue">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-              <circle cx="9" cy="7" r="4"/>
-              <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-              <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+              <circle cx="9" cy="7" r="4" />
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+              <path d="M16 3.13a4 4 0 0 1 0 7.75" />
             </svg>
           </div>
           <div class="stat-content">
@@ -126,8 +143,8 @@
         <div class="stat-card">
           <div class="stat-icon yellow">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="10"/>
-              <polyline points="12 6 12 12 16 14"/>
+              <circle cx="12" cy="12" r="10" />
+              <polyline points="12 6 12 12 16 14" />
             </svg>
           </div>
           <div class="stat-content">
@@ -140,7 +157,7 @@
         <div class="stat-card">
           <div class="stat-icon green">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
             </svg>
           </div>
           <div class="stat-content">
@@ -153,8 +170,8 @@
         <div class="stat-card">
           <div class="stat-icon red">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="12" y1="1" x2="12" y2="23"/>
-              <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+              <line x1="12" y1="1" x2="12" y2="23" />
+              <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
             </svg>
           </div>
           <div class="stat-content">
@@ -211,13 +228,14 @@
               <th>Summa</th>
               <th>Turi</th>
               <th>Status</th>
+              <th>Chek</th>
               <th>Sana</th>
               <th>Amallar</th>
             </tr>
           </thead>
           <tbody id="purchasesTableBody">
             <tr>
-              <td colspan="8" class="loading-row">
+              <td colspan="9" class="loading-row">
                 <div class="spinner"></div>
                 <p>Yuklanmoqda...</p>
               </td>
@@ -231,10 +249,10 @@
     <div id="courses" class="tab-content">
       <div class="content-header">
         <h2>Kurslar</h2>
-        <button class="btn-primary">
+        <button class="btn-primary" onclick="openCourseModal()">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="12" y1="5" x2="12" y2="19"/>
-            <line x1="5" y1="12" x2="19" y2="12"/>
+            <line x1="12" y1="5" x2="12" y2="19" />
+            <line x1="5" y1="12" x2="19" y2="12" />
           </svg>
           Yangi kurs
         </button>
@@ -252,13 +270,65 @@
       </div>
       <div class="empty-state">
         <svg width="120" height="120" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-          <circle cx="9" cy="7" r="4"/>
-          <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-          <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+          <circle cx="9" cy="7" r="4" />
+          <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+          <path d="M16 3.13a4 4 0 0 1 0 7.75" />
         </svg>
         <h3>Tez orada</h3>
         <p>Bu bo'lim hali ishlab chiqilmoqda</p>
+      </div>
+    </div>
+
+    <!-- Users Tab -->
+    <div id="users" class="tab-content">
+      <div class="content-header">
+        <h2>Foydalanuvchilar</h2>
+        <div class="header-actions">
+          <input type="text" id="searchUsers" placeholder="Qidirish..." class="search-input">
+        </div>
+      </div>
+
+      <div class="table-container">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Ism</th>
+              <th>Username</th>
+              <th>Telegram ID</th>
+              <th>Sotib olishlar</th>
+              <th>Jami summa</th>
+              <th>Ro'yxatdan o'tgan</th>
+            </tr>
+          </thead>
+          <tbody id="usersTableBody">
+            <tr>
+              <td colspan="7" class="loading-row">
+                <div class="spinner"></div>
+                <p>Yuklanmoqda...</p>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Admins Tab -->
+    <div id="admins" class="tab-content">
+      <div class="content-header">
+        <h2>Adminlar</h2>
+        <button class="btn-primary" onclick="openAddAdminModal()">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="12" y1="5" x2="12" y2="19" />
+            <line x1="5" y1="12" x2="19" y2="12" />
+          </svg>
+          Yangi admin
+        </button>
+      </div>
+
+      <div class="admins-grid" id="adminsGrid">
+        <p class="loading">Yuklanmoqda...</p>
       </div>
     </div>
   </div>
@@ -271,8 +341,8 @@
         <h3>To'lovni rad etish</h3>
         <button class="modal-close" onclick="closeRejectModal()">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="18" y1="6" x2="6" y2="18"/>
-            <line x1="6" y1="6" x2="18" y2="18"/>
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
           </svg>
         </button>
       </div>
@@ -287,9 +357,174 @@
     </div>
   </div>
 
+  <div id="courseModal" class="modal">
+    <div class="modal-overlay" onclick="closeCourseModal()"></div>
+    <div class="modal-content" style="max-width: 700px;">
+      <div class="modal-header">
+        <h3 id="courseModalTitle">Yangi kurs qo'shish</h3>
+        <button class="modal-close" onclick="closeCourseModal()">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
+      <form id="courseForm">
+        <div class="modal-body">
+          <input type="hidden" id="courseId">
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="courseTitle">Nomi *</label>
+              <input type="text" id="courseTitle" required>
+            </div>
+
+            <div class="form-group">
+              <label for="courseType">Turi *</label>
+              <select id="courseType" required onchange="toggleCourseFields()">
+                <option value="course">📚 Kurs</option>
+                <option value="book">📖 Kitob</option>
+                <option value="video">🎥 Video</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="courseDescription">Tavsif *</label>
+            <textarea id="courseDescription" rows="3" required></textarea>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group" id="lessonsCountGroup">
+              <label for="courseLessonsCount">Darslar soni</label>
+              <input type="number" id="courseLessonsCount" min="1" value="1">
+            </div>
+
+            <div class="form-group">
+              <label for="courseDuration">Davomiyligi</label>
+              <input type="text" id="courseDuration" placeholder="3 oy / 45 daqiqa">
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group" id="priceFullGroup">
+              <label for="coursePriceFull">To'liq narx (so'm)</label>
+              <input type="number" id="coursePriceFull" min="0" step="1000">
+            </div>
+
+            <div class="form-group" id="priceMonthlyGroup">
+              <label for="coursePriceMonthly">Oylik narx (so'm)</label>
+              <input type="number" id="coursePriceMonthly" min="0" step="1000">
+            </div>
+          </div>
+
+          <div class="form-group" id="priceSingleGroup">
+            <label for="coursePriceSingle">Bir martalik narx (so'm)</label>
+            <input type="number" id="coursePriceSingle" min="0" step="1000">
+          </div>
+
+          <div class="form-group" id="fileUrlGroup" style="display: none;">
+            <label for="courseFileUrl">Fayl havolasi (kitob/video uchun)</label>
+            <input type="url" id="courseFileUrl" placeholder="https://...">
+            <small>Telegram file_id yoki tashqi havola</small>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn-secondary" onclick="closeCourseModal()">Bekor qilish</button>
+          <button type="submit" class="btn-primary" id="saveCourseBtn">Saqlash</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal для добавления админа -->
+  <div id="addAdminModal" class="modal">
+    <div class="modal-overlay" onclick="closeAddAdminModal()"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Yangi admin qo'shish</h3>
+        <button class="modal-close" onclick="closeAddAdminModal()">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
+      <form id="addAdminForm">
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="adminUsername">Username *</label>
+            <input type="text" id="adminUsername" required autocomplete="off">
+          </div>
+
+          <div class="form-group">
+            <label for="adminPassword">Parol *</label>
+            <input type="password" id="adminPassword" required minlength="6" autocomplete="new-password">
+            <small>Kamida 6 belgi</small>
+          </div>
+
+          <div class="form-group">
+            <label for="adminFullName">To'liq ism *</label>
+            <input type="text" id="adminFullName" required>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn-secondary" onclick="closeAddAdminModal()">Bekor qilish</button>
+          <button type="submit" class="btn-primary">Qo'shish</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal для просмотра чека -->
+  <div id="receiptModal" class="modal">
+    <div class="modal-overlay" onclick="closeReceiptModal()"></div>
+    <div class="modal-content" style="max-width: 600px;">
+      <div class="modal-header">
+        <h3>To'lov cheki</h3>
+        <button class="modal-close" onclick="closeReceiptModal()">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
+      <div class="modal-body" id="receiptContent" style="text-align: center;">
+        <p class="loading">Yuklanmoqda...</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal для управления уроками -->
+  <div id="lessonsModal" class="modal">
+    <div class="modal-overlay" onclick="closeLessonsModal()"></div>
+    <div class="modal-content" style="max-width: 800px;">
+      <div class="modal-header">
+        <h3 id="lessonsModalTitle">Darslar</h3>
+        <button class="modal-close" onclick="closeLessonsModal()">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <button class="btn-primary" onclick="addLessonRow()" style="margin-bottom: 16px;">
+          + Dars qo'shish
+        </button>
+        <div id="lessonsList"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-secondary" onclick="closeLessonsModal()">Yopish</button>
+        <button type="button" class="btn-primary" onclick="saveLessons()">Saqlash</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast notification -->
   <div id="toast" class="toast"></div>
 
   <script src="script.js"></script>
 </body>
+
 </html>
