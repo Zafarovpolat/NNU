@@ -1,0 +1,24 @@
+{
+    "name": "najot-nur-bot",
+    "version": "1.0.0",
+    "description": "Telegram bot for selling courses",
+    "main": "bot/index.js",
+    "engines": {
+        "node": ">=16.0.0"
+    },
+    "scripts": {
+        "bot": "node bot/index.js",
+        "admin": "node admin/server.js",
+        "start": "node start.js",
+        "reset-db": "node reset-db.js",
+        "clear-webhook": "node clear-webhook.js"
+    },
+    "dependencies": {
+        "node-telegram-bot-api": "^0.64.0",
+        "express": "^4.18.2",
+        "sqlite3": "^5.1.6",
+        "dotenv": "^16.3.1",
+        "body-parser": "^1.20.2",
+        "cors": "^2.8.5"
+    }
+}
