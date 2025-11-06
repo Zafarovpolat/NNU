@@ -275,9 +275,16 @@ app.delete('/api/lessons/:id', authenticateToken, (req, res) => {
 // === ПОЛЬЗОВАТЕЛИ ===
 
 app.get('/api/users', authenticateToken, (req, res) => {
+    console.log('📥 Запрос списка пользователей');
+
     db.getAllUsers((err, users) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json(users);
+        if (err) {
+            console.error('Ошибка получения пользователей:', err);
+            return res.status(500).json({ error: err.message });
+        }
+
+        console.log(`✅ Найдено пользователей: ${users ? users.length : 0}`);
+        res.json(users || []);
     });
 });
 

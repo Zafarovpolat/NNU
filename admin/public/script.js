@@ -718,10 +718,30 @@ function displayLessons() {
   }
 
   container.innerHTML = currentLessons.map((lesson, index) => `
-    <div class="lesson-row" data-lesson-id="${lesson.id}">
-      <input type="number" value="${lesson.order_num}" min="1" data-field="order">
-      <input type="text" value="${lesson.title}" data-field="title" placeholder="Dars nomi">
-      <input type="text" value="${lesson.video_url || ''}" data-field="url" placeholder="Video URL">
+    <div class="lesson-row" data-lesson-index="${index}">
+      <input 
+        type="number" 
+        value="${lesson.order_num}" 
+        min="1" 
+        data-field="order"
+        onchange="updateLessonData(${index}, 'order_num', this.value)"
+      >
+      <input 
+        type="text" 
+        value="${lesson.title}" 
+        data-field="title" 
+        placeholder="Dars nomi"
+        onchange="updateLessonData(${index}, 'title', this.value)"
+        oninput="updateLessonData(${index}, 'title', this.value)"
+      >
+      <input 
+        type="text" 
+        value="${lesson.video_url || ''}" 
+        data-field="url" 
+        placeholder="Video URL"
+        onchange="updateLessonData(${index}, 'video_url', this.value)"
+        oninput="updateLessonData(${index}, 'video_url', this.value)"
+      >
       <button type="button" class="btn-icon" onclick="removeLesson(${index})">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <line x1="18" y1="6" x2="6" y2="18"/>
@@ -730,6 +750,14 @@ function displayLessons() {
       </button>
     </div>
   `).join('');
+}
+
+// Обновление данных урока без перерисовки
+function updateLessonData(index, field, value) {
+  if (currentLessons[index]) {
+    currentLessons[index][field] = value;
+    console.log(`Обновлен урок ${index}, поле ${field}:`, value);
+  }
 }
 
 function addLessonRow() {
@@ -742,41 +770,98 @@ function addLessonRow() {
   };
 
   currentLessons.push(newLesson);
-  displayLessons();
+
+  // Перерисовываем только если список был пуст
+  if (currentLessons.length === 1) {
+    displayLessons();
+  } else {
+    // Добавляем только новую строку
+    const container = document.getElementById('lessonsList');
+    const index = currentLessons.length - 1;
+
+    const newRow = document.createElement('div');
+    newRow.className = 'lesson-row';
+    newRow.dataset.lessonIndex = index;
+    newRow.innerHTML = `
+      <input 
+        type="number" 
+        value="${newLesson.order_num}" 
+        min="1" 
+        data-field="order"
+        onchange="updateLessonData(${index}, 'order_num', this.value)"
+      >
+      <input 
+        type="text" 
+        value="${newLesson.title}" 
+        data-field="title" 
+        placeholder="Dars nomi"
+        onchange="updateLessonData(${index}, 'title', this.value)"
+        oninput="updateLessonData(${index}, 'title', this.value)"
+      >
+      <input 
+        type="text" 
+        value="${newLesson.video_url || ''}" 
+        data-field="url" 
+        placeholder="Video URL"
+        onchange="updateLessonData(${index}, 'video_url', this.value)"
+        oninput="updateLessonData(${index}, 'video_url', this.value)"
+      >
+      <button type="button" class="btn-icon" onclick="removeLesson(${index})">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"/>
+          <line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    `;
+
+    container.appendChild(newRow);
+
+    // Фокусируемся на новое поле
+    newRow.querySelector('input[data-field="title"]').focus();
+  }
 }
 
 function removeLesson(index) {
   if (confirm('Bu darsni o\'chirmoqchimisiz?')) {
     currentLessons.splice(index, 1);
-    displayLessons();
+    displayLessons(); // Перерисовываем весь список
   }
 }
 
 async function saveLessons() {
+  // Собираем финальные данные из инпутов
   const rows = document.querySelectorAll('.lesson-row');
-  const lessons = [];
+  const lessonsToSave = [];
 
-  rows.forEach(row => {
-    const id = row.dataset.lessonId !== 'null' ? parseInt(row.dataset.lessonId) : null;
-    const order = row.querySelector('[data-field="order"]').value;
-    const title = row.querySelector('[data-field="title"]').value;
-    const url = row.querySelector('[data-field="url"]').value;
+  rows.forEach((row, idx) => {
+    const index = parseInt(row.dataset.lessonIndex);
+    const lesson = currentLessons[index];
 
-    if (title.trim()) {
-      lessons.push({ id, order_num: parseInt(order), title, video_url: url });
+    if (lesson && lesson.title && lesson.title.trim()) {
+      lessonsToSave.push({
+        id: lesson.id,
+        order_num: lesson.order_num,
+        title: lesson.title,
+        video_url: lesson.video_url
+      });
     }
   });
 
+  if (lessonsToSave.length === 0) {
+    showToast('❌ Kamida bitta dars qo\'shing', 'error');
+    return;
+  }
+
   try {
-    // Удаляем старые уроки
+    // Удаляем старые уроки которые были удалены
     for (const lesson of currentLessons) {
-      if (lesson.id && !lessons.find(l => l.id === lesson.id)) {
+      if (lesson.id && !lessonsToSave.find(l => l.id === lesson.id)) {
         await fetch(`/api/lessons/${lesson.id}`, { method: 'DELETE' });
       }
     }
 
     // Сохраняем новые и обновленные
-    for (const lesson of lessons) {
+    for (const lesson of lessonsToSave) {
       if (lesson.id) {
         await fetch(`/api/lessons/${lesson.id}`, {
           method: 'PUT',
@@ -792,6 +877,16 @@ async function saveLessons() {
       }
     }
 
+    // Обновляем количество уроков в курсе
+    await fetch(`/api/courses/${currentCourseId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ...allCourses.find(c => c.id === currentCourseId),
+        lessons_count: lessonsToSave.length
+      })
+    });
+
     showToast('✅ Darslar saqlandi!', 'success');
     closeLessonsModal();
     loadCourses();
@@ -802,36 +897,69 @@ async function saveLessons() {
 }
 
 // === ПОЛЬЗОВАТЕЛИ ===
+// === ПОЛЬЗОВАТЕЛИ ===
 async function loadUsers() {
   try {
+    console.log('📥 Загрузка пользователей...');
     const response = await fetch('/api/users');
     const users = await response.json();
+
+    console.log(`✅ Загружено пользователей: ${users.length}`, users);
 
     displayUsers(users);
   } catch (error) {
     console.error('Ошибка загрузки пользователей:', error);
+    showToast('Ошибка загрузки пользователей', 'error');
   }
 }
 
 function displayUsers(users) {
   const tbody = document.getElementById('usersTableBody');
+
+  if (!tbody) {
+    console.error('❌ Элемент usersTableBody не найден!');
+    return;
+  }
+
   tbody.innerHTML = '';
 
   if (users.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="7" class="loading-row"><p>Foydalanuvchilar yo\'q</p></td></tr>';
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="7" class="loading-row">
+          <div style="padding: 60px 20px; text-align: center; color: #6c757d;">
+            <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" style="margin-bottom: 16px; opacity: 0.3;">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+              <circle cx="9" cy="7" r="4"/>
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+              <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+            </svg>
+            <p style="font-size: 16px; font-weight: 600; margin-bottom: 8px;">Foydalanuvchilar yo'q</p>
+            <p style="font-size: 14px; opacity: 0.7;">Hali hech kim botni ishlatmagan</p>
+          </div>
+        </td>
+      </tr>
+    `;
     return;
   }
 
   users.forEach(u => {
     const row = `
       <tr>
-        <td>${u.id}</td>
-        <td>${u.full_name || 'N/A'}</td>
-        <td>@${u.username || '-'}</td>
-        <td><code>${u.telegram_id}</code></td>
-        <td>${u.purchases_count || 0}</td>
-        <td><strong>${(u.total_spent || 0).toLocaleString()}</strong> so'm</td>
-        <td>${formatDate(u.created_at)}</td>
+        <td><strong>${u.id}</strong></td>
+        <td>
+          <div style="font-weight: 600; margin-bottom: 4px;">${u.full_name || 'N/A'}</div>
+          <div style="font-size: 11px; color: #6c757d;">ID: ${u.telegram_id}</div>
+        </td>
+        <td>${u.username ? '@' + u.username : '-'}</td>
+        <td><code style="font-size: 12px; background: #f8f9fa; padding: 4px 8px; border-radius: 4px;">${u.telegram_id}</code></td>
+        <td>
+          <span style="display: inline-block; background: var(--primary); color: white; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 600;">
+            ${u.purchases_count || 0}
+          </span>
+        </td>
+        <td><strong style="color: var(--primary);">${(u.total_spent || 0).toLocaleString()}</strong> <span style="font-size: 12px; color: #6c757d;">so'm</span></td>
+        <td style="font-size: 13px; color: #6c757d;">${formatDate(u.created_at)}</td>
       </tr>
     `;
     tbody.innerHTML += row;
