@@ -263,56 +263,39 @@
       </div>
     </div>
 
-    <!-- Users Tab -->
-    <div id="users" class="tab-content">
-      <div class="content-header">
-        <h2>Foydalanuvchilar</h2>
-      </div>
-      <div class="empty-state">
-        <svg width="120" height="120" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-          <circle cx="9" cy="7" r="4" />
-          <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-          <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-        </svg>
-        <h3>Tez orada</h3>
-        <p>Bu bo'lim hali ishlab chiqilmoqda</p>
-      </div>
+<!-- Users Tab -->
+<div id="users" class="tab-content">
+  <div class="content-header">
+    <h2>Foydalanuvchilar</h2>
+    <div class="header-actions">
+      <input type="text" id="searchUsers" placeholder="Qidirish..." class="search-input" style="padding: 10px 16px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 14px; width: 300px;">
     </div>
+  </div>
 
-    <!-- Users Tab -->
-    <div id="users" class="tab-content">
-      <div class="content-header">
-        <h2>Foydalanuvchilar</h2>
-        <div class="header-actions">
-          <input type="text" id="searchUsers" placeholder="Qidirish..." class="search-input">
-        </div>
-      </div>
-
-      <div class="table-container">
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Ism</th>
-              <th>Username</th>
-              <th>Telegram ID</th>
-              <th>Sotib olishlar</th>
-              <th>Jami summa</th>
-              <th>Ro'yxatdan o'tgan</th>
-            </tr>
-          </thead>
-          <tbody id="usersTableBody">
-            <tr>
-              <td colspan="7" class="loading-row">
-                <div class="spinner"></div>
-                <p>Yuklanmoqda...</p>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
+  <div class="table-container">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Ism</th>
+          <th>Username</th>
+          <th>Telegram ID</th>
+          <th>Sotib olishlar</th>
+          <th>Jami summa</th>
+          <th>Ro'yxatdan o'tgan</th>
+        </tr>
+      </thead>
+      <tbody id="usersTableBody">
+        <tr>
+          <td colspan="7" class="loading-row">
+            <div class="spinner"></div>
+            <p>Yuklanmoqda...</p>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
 
     <!-- Admins Tab -->
     <div id="admins" class="tab-content">

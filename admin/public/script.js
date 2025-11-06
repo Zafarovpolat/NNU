@@ -899,31 +899,71 @@ async function saveLessons() {
 // === ПОЛЬЗОВАТЕЛИ ===
 // === ПОЛЬЗОВАТЕЛИ ===
 async function loadUsers() {
+  console.log('📥 Загрузка пользователей...');
+
+  const tbody = document.getElementById('usersTableBody');
+
+  if (!tbody) {
+    console.error('❌ Элемент usersTableBody не найден в DOM!');
+    console.log('Доступные элементы tbody:', Array.from(document.querySelectorAll('tbody')).map(el => el.id));
+    return;
+  }
+
+  // Показываем loader
+  tbody.innerHTML = `
+    <tr>
+      <td colspan="7" class="loading-row">
+        <div class="spinner"></div>
+        <p>Yuklanmoqda...</p>
+      </td>
+    </tr>
+  `;
+
   try {
-    console.log('📥 Загрузка пользователей...');
     const response = await fetch('/api/users');
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+
     const users = await response.json();
 
     console.log(`✅ Загружено пользователей: ${users.length}`, users);
 
     displayUsers(users);
   } catch (error) {
-    console.error('Ошибка загрузки пользователей:', error);
-    showToast('Ошибка загрузки пользователей', 'error');
+    console.error('❌ Ошибка загрузки пользователей:', error);
+
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="7" class="loading-row">
+          <div style="padding: 40px; text-align: center; color: #dc3545;">
+            <p style="font-size: 16px; font-weight: 600; margin-bottom: 8px;">❌ Xatolik</p>
+            <p style="font-size: 14px;">${error.message}</p>
+          </div>
+        </td>
+      </tr>
+    `;
+
+    showToast('Foydalanuvchilarni yuklashda xatolik', 'error');
   }
 }
 
 function displayUsers(users) {
+  console.log('🎨 Отображение пользователей:', users.length);
+
   const tbody = document.getElementById('usersTableBody');
 
   if (!tbody) {
-    console.error('❌ Элемент usersTableBody не найден!');
+    console.error('❌ Элемент usersTableBody не найден при отображении!');
     return;
   }
 
+  // Очищаем таблицу
   tbody.innerHTML = '';
 
-  if (users.length === 0) {
+  if (!users || users.length === 0) {
+    console.log('ℹ️ Пользователи не найдены');
     tbody.innerHTML = `
       <tr>
         <td colspan="7" class="loading-row">
@@ -943,7 +983,13 @@ function displayUsers(users) {
     return;
   }
 
-  users.forEach(u => {
+  console.log('✅ Создание строк для', users.length, 'пользователей');
+
+  let rowsHTML = '';
+
+  users.forEach((u, index) => {
+    console.log(`Создание строки ${index + 1}:`, u);
+
     const row = `
       <tr>
         <td><strong>${u.id}</strong></td>
@@ -962,7 +1008,34 @@ function displayUsers(users) {
         <td style="font-size: 13px; color: #6c757d;">${formatDate(u.created_at)}</td>
       </tr>
     `;
-    tbody.innerHTML += row;
+
+    rowsHTML += row;
+  });
+
+  tbody.innerHTML = rowsHTML;
+
+  console.log('✅ Таблица обновлена');
+}
+
+// Поиск пользователей
+function initUserSearch() {
+  const searchInput = document.getElementById('searchUsers');
+
+  if (!searchInput) {
+    console.log('⚠️ Поле поиска пользователей не найдено');
+    return;
+  }
+
+  searchInput.addEventListener('input', (e) => {
+    const search = e.target.value.toLowerCase();
+    const rows = document.querySelectorAll('#usersTableBody tr');
+
+    console.log(`🔍 Поиск: "${search}", строк: ${rows.length}`);
+
+    rows.forEach(row => {
+      const text = row.textContent.toLowerCase();
+      row.style.display = text.includes(search) ? '' : 'none';
+    });
   });
 }
 
@@ -1096,9 +1169,27 @@ setInterval(() => {
 // Инициализация
 document.addEventListener('DOMContentLoaded', () => {
   console.log('🎨 Admin Panel загружен');
+
+  // Проверяем наличие важных элементов
+  console.log('🔍 Проверка элементов DOM:');
+  console.log('   purchasesTableBody:', !!document.getElementById('purchasesTableBody'));
+  console.log('   usersTableBody:', !!document.getElementById('usersTableBody'));
+  console.log('   coursesGrid:', !!document.getElementById('coursesGrid'));
+  console.log('   adminsGrid:', !!document.getElementById('adminsGrid'));
+
+  // Инициализируем поиск
+  initUserSearch();
+
+  // Загружаем данные
   loadStats();
   loadPurchases();
   loadCourses();
+
+  // Если открыт таб users - загружаем пользователей
+  const activeTab = document.querySelector('.tab-content.active');
+  if (activeTab && activeTab.id === 'users') {
+    loadUsers();
+  }
 
   setTimeout(() => {
     showToast('👋 Xush kelibsiz!', 'success');
