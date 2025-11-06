@@ -301,97 +301,129 @@ app.get('/api/purchases', (req, res) => {
 });
 
 // Подтвердить оплату
-app.post('/api/purchases/:id/confirm', authenticateToken, (req, res) => {
+// Подтвердить оплату
+app.post('/api/purchases/:id/confirm', authenticateToken, async (req, res) => {
     const { id } = req.params;
 
-    db.getPurchaseWithDetails(id, (err, purchase) => {
+    console.log(`📝 Попытка подтвердить покупку #${id}`);
+
+    db.getPurchaseWithDetails(id, async (err, purchase) => {
         if (err || !purchase) {
+            console.error('Ошибка получения покупки:', err);
             return res.status(500).json({ error: 'Покупка не найдена' });
         }
 
-        db.confirmPayment(id, (err) => {
+        console.log('✅ Покупка найдена:', purchase);
+
+        db.confirmPayment(id, async (err) => {
             if (err) {
+                console.error('Ошибка подтверждения в БД:', err);
                 return res.status(500).json({ error: err.message });
             }
 
-            // Отправляем уведомление пользователю
+            console.log('✅ Покупка подтверждена в БД');
+
+            // Получаем бота
             const bot = global.telegramBot;
 
             if (!bot) {
+                console.error('❌ Бот не доступен глобально!');
+                console.log('Доступные глобальные переменные:', Object.keys(global).filter(k => k.includes('bot')));
                 return res.json({
                     success: true,
                     warning: true,
-                    message: 'Бот не доступен для отправки уведомления'
+                    message: 'Оплата подтверждена, но бот не доступен для отправки уведомления'
                 });
             }
+
+            console.log('✅ Бот найден, отправляем уведомление...');
 
             const icon = purchase.course_type === 'course' ? '📚' :
                 purchase.course_type === 'book' ? '📖' : '🎥';
 
-            const message = `🎉 Tabriklaymiz!
+            const message = `🎉 <b>Tabriklaymiz!</b>
 
 ✅ Sizning to'lovingiz tasdiqlandi!
 
-${icon} Kurs: <b>${purchase.course_title}</b>
-💰 Summa: ${purchase.amount.toLocaleString()} so'm
+${icon} <b>Kurs:</b> ${purchase.course_title}
+💰 <b>Summa:</b> ${purchase.amount.toLocaleString()} so'm
 
 Kursni ko'rish uchun "🎓 Mening kurslarim" bo'limiga o'ting.
 
 Omad tilaymiz! 🚀`;
 
-            bot.sendMessage(purchase.telegram_id, message, {
-                parse_mode: 'HTML',
-                reply_markup: {
-                    keyboard: [
-                        ['📚 Kurslar', '📖 Kitoblar'],
-                        ['🎥 Video kurslar', '🎓 Mening kurslarim'],
-                        ['⚙️ Sozlamalar']
-                    ],
-                    resize_keyboard: true
-                }
-            }).then(() => {
-                res.json({ success: true });
-            }).catch(sendError => {
-                console.error('Ошибка отправки уведомления:', sendError);
+            try {
+                await bot.sendMessage(purchase.telegram_id, message, {
+                    parse_mode: 'HTML',
+                    reply_markup: {
+                        keyboard: [
+                            ['📚 Kurslar', '📖 Kitoblar'],
+                            ['🎥 Video kurslar', '🎓 Mening kurslarim'],
+                            ['⚙️ Sozlamalar']
+                        ],
+                        resize_keyboard: true
+                    }
+                });
+
+                console.log(`✅ Уведомление отправлено пользователю ${purchase.telegram_id}`);
+
+                res.json({
+                    success: true,
+                    message: 'Оплата подтверждена и уведомление отправлено'
+                });
+            } catch (sendError) {
+                console.error('❌ Ошибка отправки сообщения:', sendError);
+
                 res.json({
                     success: true,
                     warning: true,
-                    message: 'Оплата подтверждена, но не удалось отправить уведомление'
+                    message: 'Оплата подтверждена, но не удалось отправить уведомление: ' + sendError.message
                 });
-            });
+            }
         });
     });
 });
 
 // Отклонить оплату
-app.post('/api/purchases/:id/reject', authenticateToken, (req, res) => {
+app.post('/api/purchases/:id/reject', authenticateToken, async (req, res) => {
     const { id } = req.params;
     const { reason } = req.body;
 
-    db.getPurchaseWithDetails(id, (err, purchase) => {
+    console.log(`📝 Попытка отклонить покупку #${id}`);
+
+    db.getPurchaseWithDetails(id, async (err, purchase) => {
         if (err || !purchase) {
+            console.error('Ошибка получения покупки:', err);
             return res.status(500).json({ error: 'Покупка не найдена' });
         }
+
+        console.log('✅ Покупка найдена:', purchase);
 
         db.db.run(
             'UPDATE purchases SET status = "rejected" WHERE id = ?',
             [id],
-            (err) => {
+            async (err) => {
                 if (err) {
+                    console.error('Ошибка отклонения в БД:', err);
                     return res.status(500).json({ error: err.message });
                 }
+
+                console.log('✅ Покупка отклонена в БД');
 
                 const bot = global.telegramBot;
 
                 if (!bot) {
+                    console.error('❌ Бот не доступен глобально!');
                     return res.json({
                         success: true,
                         warning: true,
-                        message: 'Бот не доступен'
+                        message: 'Оплата отклонена, но бот не доступен'
                     });
                 }
 
-                const message = `❌ To'lov rad etildi
+                console.log('✅ Бот найден, отправляем уведомление об отклонении...');
+
+                const message = `❌ <b>To'lov rad etildi</b>
 
 📝 Buyurtma raqami: #${id}
 📚 Kurs: ${purchase.course_title}
@@ -399,17 +431,26 @@ ${reason ? `\n📋 Sabab: ${reason}` : ''}
 
 Iltimos, to'lovni qaytadan amalga oshiring yoki qo'llab-quvvatlash xizmatiga murojaat qiling.`;
 
-                bot.sendMessage(purchase.telegram_id, message, {
-                    parse_mode: 'HTML'
-                }).then(() => {
-                    res.json({ success: true });
-                }).catch(sendError => {
+                try {
+                    await bot.sendMessage(purchase.telegram_id, message, {
+                        parse_mode: 'HTML'
+                    });
+
+                    console.log(`✅ Уведомление об отклонении отправлено пользователю ${purchase.telegram_id}`);
+
+                    res.json({
+                        success: true,
+                        message: 'Оплата отклонена и уведомление отправлено'
+                    });
+                } catch (sendError) {
+                    console.error('❌ Ошибка отправки сообщения:', sendError);
+
                     res.json({
                         success: true,
                         warning: true,
-                        message: 'Оплата отклонена, но не удалось отправить уведомление'
+                        message: 'Оплата отклонена, но не удалось отправить уведомление: ' + sendError.message
                     });
-                });
+                }
             }
         );
     });

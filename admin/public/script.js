@@ -335,9 +335,12 @@ async function confirmPayment(id) {
   if (!confirm('To\'lovni tasdiqlaysizmi?\n\nFoydalanuvchiga xabar yuboriladi.')) return;
 
   const btn = document.getElementById(`confirm-${id}`);
+  const originalHTML = btn ? btn.innerHTML : '';
+
   if (btn) {
     btn.classList.add('loading');
     btn.disabled = true;
+    btn.style.minWidth = btn.offsetWidth + 'px'; // Фиксируем ширину
   }
 
   try {
@@ -351,13 +354,18 @@ async function confirmPayment(id) {
     const result = await response.json();
 
     if (result.success) {
-      showToast('✅ To\'lov tasdiqlandi! Foydalanuvchiga xabar yuborildi.', 'success');
+      if (result.warning) {
+        showToast('⚠️ ' + result.message, 'warning');
+      } else {
+        showToast('✅ To\'lov tasdiqlandi! Foydalanuvchiga xabar yuborildi.', 'success');
+      }
       loadPurchases();
     } else {
       showToast('❌ Xatolik: ' + (result.error || 'Noma\'lum xatolik'), 'error');
       if (btn) {
         btn.classList.remove('loading');
         btn.disabled = false;
+        btn.innerHTML = originalHTML;
       }
     }
   } catch (error) {
@@ -366,6 +374,7 @@ async function confirmPayment(id) {
     if (btn) {
       btn.classList.remove('loading');
       btn.disabled = false;
+      btn.innerHTML = originalHTML;
     }
   }
 }

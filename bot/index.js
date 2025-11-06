@@ -17,4 +17,8 @@ bot.on('message', (msg) => {
     }
 });
 
+// ВАЖНО: Экспортируем бота глобально для админки
+global.telegramBot = bot;
+console.log('✅ Бот экспортирован глобально');
+
 module.exports = bot;

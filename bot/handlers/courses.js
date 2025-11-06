@@ -135,7 +135,6 @@ module.exports = (bot) => {
 
         if (data === 'back_main') {
             bot.deleteMessage(chatId, messageId).catch(() => { });
-            bot.sendMessage(chatId, 'Asosiy menyu:', menus.mainMenu);
             bot.answerCallbackQuery(query.id);
         }
     });
