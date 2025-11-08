@@ -1,12 +1,17 @@
 <!DOCTYPE html>
 <html lang="uz">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Najot Nur - Kirish</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Poppins:wght@600;700&display=swap" rel="stylesheet">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Poppins:wght@600;700&display=swap"
+    rel="stylesheet">
+  <!-- Feather Icons -->
+  <script src="https://unpkg.com/feather-icons"></script>
   <style>
     * {
       margin: 0;
@@ -39,6 +44,7 @@
         opacity: 0;
         transform: translateY(30px);
       }
+
       to {
         opacity: 1;
         transform: translateY(0);
@@ -165,7 +171,9 @@
     }
 
     @keyframes spin {
-      to { transform: rotate(360deg); }
+      to {
+        transform: rotate(360deg);
+      }
     }
 
     .password-toggle {
@@ -202,6 +210,7 @@
     }
   </style>
 </head>
+
 <body>
   <div class="login-container">
     <div class="login-header">
@@ -219,28 +228,15 @@
       <form id="loginForm">
         <div class="form-group">
           <label for="username">Foydalanuvchi nomi</label>
-          <input 
-            type="text" 
-            id="username" 
-            name="username" 
-            autocomplete="username"
-            required 
-            autofocus
-            placeholder="admin"
-          >
+          <input type="text" id="username" name="username" autocomplete="username" required autofocus
+            placeholder="admin">
         </div>
 
         <div class="form-group">
           <label for="password">Parol</label>
           <div class="password-toggle">
-            <input 
-              type="password" 
-              id="password" 
-              name="password" 
-              autocomplete="current-password"
-              required
-              placeholder="••••••••"
-            >
+            <input type="password" id="password" name="password" autocomplete="current-password" required
+              placeholder="••••••••">
             <button type="button" id="togglePassword">👁️</button>
           </div>
         </div>
@@ -270,17 +266,17 @@
     // Handle login
     loginForm.addEventListener('submit', async (e) => {
       e.preventDefault();
-      
+
       const username = document.getElementById('username').value;
       const password = document.getElementById('password').value;
-      
+
       // Hide previous errors
       errorMessage.classList.remove('show');
-      
+
       // Disable button and show loader
       loginBtn.disabled = true;
       loginBtn.innerHTML = '<span class="loader"></span> Kirish...';
-      
+
       try {
         const response = await fetch('/api/auth/login', {
           method: 'POST',
@@ -289,21 +285,21 @@
           },
           body: JSON.stringify({ username, password })
         });
-        
+
         const data = await response.json();
-        
+
         if (response.ok) {
           // Save token
           localStorage.setItem('admin_token', data.token);
           localStorage.setItem('admin_name', data.admin.full_name);
-          
+
           // Redirect to dashboard
           window.location.href = '/';
         } else {
           // Show error
           errorText.textContent = data.error || 'Noto\'g\'ri login yoki parol';
           errorMessage.classList.add('show');
-          
+
           // Re-enable button
           loginBtn.disabled = false;
           loginBtn.textContent = 'Kirish';
@@ -312,7 +308,7 @@
         console.error('Login error:', error);
         errorText.textContent = 'Xatolik yuz berdi. Qaytadan urinib ko\'ring.';
         errorMessage.classList.add('show');
-        
+
         loginBtn.disabled = false;
         loginBtn.textContent = 'Kirish';
       }
@@ -323,5 +319,13 @@
       window.location.href = '/';
     }
   </script>
+
+  <script>
+    // Инициализация иконок
+    if (typeof feather !== 'undefined') {
+      feather.replace();
+    }
+  </script>
 </body>
+
 </html>

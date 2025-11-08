@@ -289,25 +289,38 @@ app.get('/api/users', authenticateToken, (req, res) => {
 });
 
 // === ПОКУПКИ ===
-
 app.get('/api/purchases', (req, res) => {
+    console.log('📥 Запрос списка покупок');
+
     db.db.all(
-        `SELECT p.*, u.full_name, u.telegram_id, u.username, c.title as course_title, c.type as course_type
+        `SELECT 
+      p.*,
+      u.full_name,
+      u.telegram_id,
+      COALESCE(u.username, '') as username,
+      c.title as course_title,
+      c.type as course_type
      FROM purchases p
-     JOIN users u ON p.user_id = u.id
-     JOIN courses c ON p.course_id = c.id
+     INNER JOIN users u ON p.user_id = u.id
+     INNER JOIN courses c ON p.course_id = c.id
      ORDER BY p.created_at DESC`,
         (err, purchases) => {
             if (err) {
-                console.error('Ошибка получения покупок:', err);
-                return res.status(500).json({ error: err.message });
+                console.error('❌ Ошибка SQL при получении покупок:', err);
+                return res.status(500).json({
+                    error: 'Database error: ' + err.message,
+                    details: err.toString()
+                });
             }
-            res.json(purchases);
+
+            console.log(`✅ Найдено покупок: ${purchases ? purchases.length : 0}`);
+
+            // Всегда возвращаем массив
+            res.json(purchases || []);
         }
     );
 });
 
-// Подтвердить оплату
 // Подтвердить оплату
 app.post('/api/purchases/:id/confirm', authenticateToken, async (req, res) => {
     const { id } = req.params;
@@ -523,6 +536,281 @@ app.get('/api/bot-status', (req, res) => {
 // Главная страница - редирект на login если не авторизован
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public/index.html'));
+});
+
+// === ПРОФИЛЬ ===
+
+// Получить текущего админа
+app.get('/api/auth/me', authenticateToken, (req, res) => {
+    db.db.get(
+        'SELECT id, username, full_name, created_at, last_login FROM admins WHERE id = ?',
+        [req.admin.id],
+        (err, admin) => {
+            if (err || !admin) {
+                return res.status(404).json({ error: 'Админ не найден' });
+            }
+            res.json({ admin });
+        }
+    );
+});
+
+// Обновить профиль
+app.put('/api/admins/update-profile', authenticateToken, (req, res) => {
+    const { username, full_name } = req.body;
+
+    if (!username || !full_name) {
+        return res.status(400).json({ error: 'Все поля обязательны' });
+    }
+
+    // Проверяем уникальность username
+    db.db.get(
+        'SELECT id FROM admins WHERE username = ? AND id != ?',
+        [username, req.admin.id],
+        (err, existing) => {
+            if (existing) {
+                return res.status(400).json({ error: 'Такой username уже существует' });
+            }
+
+            db.db.run(
+                'UPDATE admins SET username = ?, full_name = ? WHERE id = ?',
+                [username, full_name, req.admin.id],
+                (err) => {
+                    if (err) return res.status(500).json({ error: err.message });
+                    res.json({ success: true });
+                }
+            );
+        }
+    );
+});
+
+// Безопасная смена пароля (с проверкой текущего)
+app.post('/api/admins/change-password-secure', authenticateToken, (req, res) => {
+    const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+        return res.status(400).json({ error: 'Все поля обязательны' });
+    }
+
+    if (newPassword.length < 6) {
+        return res.status(400).json({ error: 'Новый пароль должен быть не менее 6 символов' });
+    }
+
+    // Проверяем текущий пароль
+    db.db.get(
+        'SELECT id FROM admins WHERE id = ? AND password_hash = ?',
+        [req.admin.id, db.hashPassword(currentPassword)],
+        (err, admin) => {
+            if (!admin) {
+                return res.status(401).json({ error: 'Неверный текущий пароль' });
+            }
+
+            db.changePassword(req.admin.id, newPassword, (err) => {
+                if (err) return res.status(500).json({ error: err.message });
+                res.json({ success: true });
+            });
+        }
+    );
+});
+
+// === РАССЫЛКА ===
+
+// Статистика для рассылки
+app.get('/api/broadcast/stats', authenticateToken, (req, res) => {
+    console.log('📊 Запрос статистики рассылки');
+
+    db.db.get('SELECT COUNT(*) as total FROM users', (err, total) => {
+        if (err) {
+            console.error('Ошибка получения статистики:', err);
+            return res.status(500).json({ error: err.message });
+        }
+
+        db.db.get(
+            'SELECT COUNT(*) as enabled FROM users WHERE notifications_enabled = 1',
+            (err, enabled) => {
+                if (err) {
+                    console.error('Ошибка получения статистики:', err);
+                    return res.status(500).json({ error: err.message });
+                }
+
+                res.json({
+                    totalUsers: total ? total.total : 0,
+                    notificationsEnabled: enabled ? enabled.enabled : 0
+                });
+            }
+        );
+    });
+});
+
+// Тестовая рассылка (самому себе в консоль пока)
+app.post('/api/broadcast/test', authenticateToken, async (req, res) => {
+    const { message } = req.body;
+
+    console.log('🧪 Тестовая рассылка');
+
+    if (!message) {
+        return res.status(400).json({ error: 'Сообщение обязательно' });
+    }
+
+    const bot = global.telegramBot;
+
+    if (!bot) {
+        console.error('❌ Бот не доступен');
+        return res.status(500).json({ error: 'Бот не доступен. Запустите бота.' });
+    }
+
+    // Пока просто выводим в консоль
+    console.log('📨 Тестовое сообщение:', message);
+    console.log('✅ В реальности отправилось бы всем пользователям');
+
+    res.json({
+        success: true,
+        message: 'Тестовое сообщение проверено. В реальной рассылке оно будет отправлено всем пользователям.'
+    });
+});
+
+// Массовая рассылка
+app.post('/api/broadcast/send', authenticateToken, async (req, res) => {
+    const { message, onlyNotifications } = req.body;
+
+    console.log('📢 Массовая рассылка');
+    console.log('   Только с уведомлениями:', onlyNotifications);
+
+    if (!message) {
+        return res.status(400).json({ error: 'Сообщение обязательно' });
+    }
+
+    const bot = global.telegramBot;
+
+    if (!bot) {
+        console.error('❌ Бот не доступен');
+        return res.status(500).json({ error: 'Бот не доступен. Запустите бота.' });
+    }
+
+    // Получаем пользователей
+    const query = onlyNotifications
+        ? 'SELECT telegram_id, full_name FROM users WHERE notifications_enabled = 1'
+        : 'SELECT telegram_id, full_name FROM users';
+
+    db.db.all(query, async (err, users) => {
+        if (err) {
+            console.error('Ошибка получения пользователей:', err);
+            return res.status(500).json({ error: err.message });
+        }
+
+        if (!users || users.length === 0) {
+            return res.json({
+                success: true,
+                total: 0,
+                sent: 0,
+                failed: 0,
+                message: 'Нет пользователей для рассылки'
+            });
+        }
+
+        console.log(`📢 Начало рассылки для ${users.length} пользователей`);
+
+        // Отправляем ответ сразу
+        res.json({ success: true, total: users.length, sent: 0, failed: 0 });
+
+        let sent = 0;
+        let failed = 0;
+
+        // Отправляем в фоне
+        for (const user of users) {
+            try {
+                await bot.sendMessage(user.telegram_id, message, {
+                    parse_mode: 'HTML',
+                    disable_web_page_preview: true
+                });
+                sent++;
+                console.log(`✅ Отправлено: ${user.full_name} (${user.telegram_id})`);
+
+                // Задержка чтобы не превысить лимит Telegram (30 сообщений в секунду)
+                await new Promise(resolve => setTimeout(resolve, 50));
+            } catch (error) {
+                failed++;
+                console.error(`❌ Ошибка отправки ${user.telegram_id}:`, error.message);
+            }
+        }
+
+        console.log(`📊 Рассылка завершена. Успешно: ${sent}, Ошибок: ${failed}`);
+    });
+});
+
+// Тестовая рассылка (админу)
+app.post('/api/broadcast/test', authenticateToken, async (req, res) => {
+    const { message } = req.body;
+
+    if (!message) {
+        return res.status(400).json({ error: 'Сообщение обязательно' });
+    }
+
+    const bot = global.telegramBot;
+
+    if (!bot) {
+        return res.status(500).json({ error: 'Бот не доступен' });
+    }
+
+    // Получаем telegram_id админа (нужно добавить в таблицу admins или использовать отдельное поле)
+    // Пока отправим в консоль
+    console.log('📨 Тестовое сообщение:', message);
+
+    // TODO: Добавьте telegram_id в таблицу admins для тестовой рассылки
+    res.json({ success: true, message: 'Функция в разработке. Сообщение: ' + message });
+});
+
+// Массовая рассылка
+app.post('/api/broadcast/send', authenticateToken, async (req, res) => {
+    const { message, onlyNotifications } = req.body;
+
+    if (!message) {
+        return res.status(400).json({ error: 'Сообщение обязательно' });
+    }
+
+    const bot = global.telegramBot;
+
+    if (!bot) {
+        return res.status(500).json({ error: 'Бот не доступен' });
+    }
+
+    // Получаем пользователей
+    const query = onlyNotifications
+        ? 'SELECT telegram_id FROM users WHERE notifications_enabled = 1'
+        : 'SELECT telegram_id FROM users';
+
+    db.db.all(query, async (err, users) => {
+        if (err) {
+            return res.status(500).json({ error: err.message });
+        }
+
+        console.log(`📢 Начало рассылки для ${users.length} пользователей`);
+
+        let sent = 0;
+        let failed = 0;
+
+        // Отправляем асинхронно
+        const sendPromises = users.map(async (user) => {
+            try {
+                await bot.sendMessage(user.telegram_id, message, { parse_mode: 'HTML' });
+                sent++;
+                console.log(`✅ Отправлено: ${user.telegram_id}`);
+            } catch (error) {
+                failed++;
+                console.error(`❌ Ошибка отправки ${user.telegram_id}:`, error.message);
+            }
+
+            // Задержка чтобы не превысить лимит Telegram (30 сообщений в секунду)
+            await new Promise(resolve => setTimeout(resolve, 50));
+        });
+
+        // Отправляем ответ сразу, не дожидаясь завершения
+        res.json({ success: true, total: users.length });
+
+        // Продолжаем рассылку в фоне
+        Promise.all(sendPromises).then(() => {
+            console.log(`📊 Рассылка завершена. Успешно: ${sent}, Ошибок: ${failed}`);
+        });
+    });
 });
 
 // Запуск сервера

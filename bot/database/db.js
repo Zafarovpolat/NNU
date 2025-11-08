@@ -359,7 +359,17 @@ const dbHelpers = {
             [purchaseId],
             callback
         );
-    }
+    },
+
+    updateAdmin: (id, username, fullName, callback) => {
+        db.run(
+            'UPDATE admins SET username = ?, full_name = ? WHERE id = ?',
+            [username, fullName, id],
+            callback
+        );
+    },
+
+
 };
 
 module.exports = { db, hashPassword, ...dbHelpers };

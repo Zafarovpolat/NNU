@@ -1,61 +1,56 @@
+if (process.env.NODE_ENV !== 'production') {
+    require('dotenv').config();
+}
+
 console.log('═══════════════════════════════════════');
 console.log('🚀 Najot Nur Bot - Starting...');
 console.log('═══════════════════════════════════════\n');
 
-console.log('🔍 Отладка переменных окружения:');
-console.log('   NODE_ENV:', process.env.NODE_ENV);
-console.log('   RAILWAY_ENVIRONMENT:', process.env.RAILWAY_ENVIRONMENT);
-console.log('   PORT:', process.env.PORT);
-console.log('   BOT_TOKEN существует:', !!process.env.BOT_TOKEN);
-console.log('   BOT_TOKEN длина:', process.env.BOT_TOKEN ? process.env.BOT_TOKEN.length : 0);
-
-if (process.env.RAILWAY_ENVIRONMENT) {
-    console.log('\n📦 Запуск на Railway');
-    console.log('   Service ID:', process.env.RAILWAY_SERVICE_ID);
-}
-
-console.log('\n');
-
 if (!process.env.BOT_TOKEN) {
-    console.error('╔═══════════════════════════════════════════════════════╗');
-    console.error('║  ❌ КРИТИЧЕСКАЯ ОШИБКА: BOT_TOKEN не найден!         ║');
-    console.error('╚═══════════════════════════════════════════════════════╝\n');
+    console.error('❌ BOT_TOKEN не найден!');
     process.exit(1);
 }
 
+console.log('✅ BOT_TOKEN найден');
+
 try {
-    console.log('🤖 Запуск Telegram бота...');
+    console.log('\n🤖 Запуск Telegram бота...');
     const bot = require('./bot/index.js');
 
+    // ВАЖНО: Устанавливаем глобально
+    global.telegramBot = bot;
+    console.log('✅ Бот установлен глобально');
+
+    // Проверка через 2 секунды
+    setTimeout(() => {
+        if (global.telegramBot) {
+            console.log('✅ Проверка: global.telegramBot доступен');
+        } else {
+            console.error('❌ Проверка: global.telegramBot НЕ доступен!');
+        }
+    }, 2000);
+
+    // Запускаем админку через 3 секунды
     setTimeout(() => {
         console.log('\n💼 Запуск Admin Panel...');
         require('./admin/server.js');
+    }, 3000);
 
-        // Проверяем что бот доступен глобально
-        setTimeout(() => {
-            if (global.telegramBot) {
-                console.log('✅ Бот доступен для админки');
-            } else {
-                console.warn('⚠️  Бот НЕ доступен глобально!');
-            }
-        }, 1000);
-    }, 3000); // Увеличиваем до 3 секунд
-
-    console.log('\n✅ Все сервисы запущены!');
+    console.log('\n✅ Инициализация завершена!');
     console.log('═══════════════════════════════════════\n');
 
 } catch (error) {
-    console.error('\n❌ Ошибка запуска:', error.message);
+    console.error('\n❌ Ошибка запуска:', error);
     console.error(error.stack);
     process.exit(1);
 }
 
 process.on('SIGTERM', () => {
-    console.log('\n👋 SIGTERM - остановка...');
+    console.log('\n👋 Остановка...');
     process.exit(0);
 });
 
 process.on('SIGINT', () => {
-    console.log('\n👋 SIGINT - остановка...');
+    console.log('\n👋 Остановка...');
     process.exit(0);
 });
