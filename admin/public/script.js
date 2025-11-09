@@ -1,8 +1,17 @@
+// ========================================
+// ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ
+// ========================================
 let currentRejectId = null;
 let currentCourseId = null;
 let allPurchases = [];
 let allCourses = [];
 let currentLessons = [];
+let currentAdminData = null;
+let broadcastFormInitialized = false; // Флаг инициализации broadcast
+
+// ========================================
+// АВТОРИЗАЦИЯ
+// ========================================
 
 // Проверка авторизации
 function checkAuth() {
@@ -26,7 +35,6 @@ function checkAuth() {
       return res.json();
     })
     .then(data => {
-      // Обновляем имя админа
       const adminName = localStorage.getItem('admin_name') || data.admin.username;
       document.getElementById('adminName').textContent = adminName;
     })
@@ -49,7 +57,6 @@ const originalFetch = window.fetch;
 window.fetch = async function (...args) {
   const token = localStorage.getItem('admin_token');
 
-  // Добавляем токен
   if (token) {
     if (args[1]) {
       args[1].headers = {
@@ -68,7 +75,6 @@ window.fetch = async function (...args) {
   try {
     const response = await originalFetch.apply(this, args);
 
-    // Логируем ошибки
     if (!response.ok) {
       console.error(`❌ Fetch error: ${args[0]} - ${response.status} ${response.statusText}`);
     }
@@ -89,6 +95,10 @@ function logout() {
   }
 }
 
+// ========================================
+// НАВИГАЦИЯ И UI
+// ========================================
+
 // Переключение табов
 document.querySelectorAll('.nav-btn').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -98,6 +108,8 @@ document.querySelectorAll('.nav-btn').forEach(btn => {
 });
 
 function switchTab(tabName) {
+  console.log('📑 Переключение на таб:', tabName);
+
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
 
@@ -112,13 +124,17 @@ function switchTab(tabName) {
     'purchases': 'To\'lovlar',
     'courses': 'Kurslar',
     'users': 'Foydalanuvchilar',
-    'admins': 'Adminlar'
+    'broadcast': 'Xabarlar',
+    'admins': 'Adminlar',
+    'profile': 'Profil'
   };
   document.getElementById('pageTitle').textContent = titles[tabName] || tabName;
 
   // Загружаем данные для конкретного таба
   if (tabName === 'users') loadUsers();
   if (tabName === 'admins') loadAdmins();
+  if (tabName === 'broadcast') loadBroadcastStats();
+  if (tabName === 'profile') loadProfile();
 
   if (window.innerWidth <= 768) {
     document.querySelector('.sidebar').classList.remove('active');
@@ -141,7 +157,36 @@ function showToast(message, type = 'info') {
   }, 5000);
 }
 
-// === СТАТИСТИКА ===
+// Форматирование даты
+function formatDate(dateString) {
+  const date = new Date(dateString);
+  const now = new Date();
+  const diff = now - date;
+  const minutes = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const days = Math.floor(diff / 86400000);
+
+  if (minutes < 60) {
+    return `${minutes} daqiqa oldin`;
+  } else if (hours < 24) {
+    return `${hours} soat oldin`;
+  } else if (days < 7) {
+    return `${days} kun oldin`;
+  } else {
+    return date.toLocaleDateString('uz-UZ', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  }
+}
+
+// ========================================
+// СТАТИСТИКА
+// ========================================
+
 async function loadStats() {
   try {
     const response = await fetch('/api/stats');
@@ -162,7 +207,10 @@ async function loadStats() {
   }
 }
 
-// === ПОКУПКИ ===
+// ========================================
+// ПОКУПКИ
+// ========================================
+
 async function loadPurchases() {
   try {
     const response = await fetch('/api/purchases');
@@ -173,7 +221,6 @@ async function loadPurchases() {
 
     const data = await response.json();
 
-    // Проверяем что data это массив
     if (!Array.isArray(data)) {
       console.error('Получены некорректные данные:', data);
       throw new Error(data.error || 'Некорректный формат данных');
@@ -187,7 +234,6 @@ async function loadPurchases() {
     console.error('Ошибка загрузки покупок:', error);
     showToast('Ошибка загрузки покупок: ' + error.message, 'error');
 
-    // Показываем ошибку в таблице
     const tbody = document.getElementById('purchasesTableBody');
     if (tbody) {
       tbody.innerHTML = `
@@ -265,7 +311,6 @@ function displayPurchases(purchases) {
         actionButtons = '-';
     }
 
-    // Информация о чеке
     if (p.payment_proof) {
       if (p.payment_proof_type === 'photo' || p.payment_proof_type === 'document') {
         receiptInfo = `<button class="btn-primary" onclick="viewReceipt('${p.payment_proof}', '${p.payment_proof_type}')" style="padding: 6px 12px; font-size: 12px;">📎 Ko'rish</button>`;
@@ -295,9 +340,7 @@ function displayPurchases(purchases) {
         <td><span style="text-transform: capitalize; font-weight: 500;">${p.payment_type}</span></td>
         <td>${statusBadge}</td>
         <td>${receiptInfo}</td>
-        <td style="font-size: 13px; color: #6c757d;">
-          ${formatDate(p.created_at)}
-        </td>
+        <td style="font-size: 13px; color: #6c757d;">${formatDate(p.created_at)}</td>
         <td>${actionButtons}</td>
       </tr>
     `;
@@ -338,31 +381,6 @@ function displayRecentPayments(purchases) {
   }).join('');
 }
 
-function formatDate(dateString) {
-  const date = new Date(dateString);
-  const now = new Date();
-  const diff = now - date;
-  const minutes = Math.floor(diff / 60000);
-  const hours = Math.floor(diff / 3600000);
-  const days = Math.floor(diff / 86400000);
-
-  if (minutes < 60) {
-    return `${minutes} daqiqa oldin`;
-  } else if (hours < 24) {
-    return `${hours} soat oldin`;
-  } else if (days < 7) {
-    return `${days} kun oldin`;
-  } else {
-    return date.toLocaleDateString('uz-UZ', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  }
-}
-
 function filterPurchases() {
   const status = document.getElementById('statusFilter').value;
 
@@ -383,7 +401,7 @@ async function confirmPayment(id) {
   if (btn) {
     btn.classList.add('loading');
     btn.disabled = true;
-    btn.style.minWidth = btn.offsetWidth + 'px'; // Фиксируем ширину
+    btn.style.minWidth = btn.offsetWidth + 'px';
   }
 
   try {
@@ -461,7 +479,6 @@ async function confirmReject() {
   }
 }
 
-// Просмотр чека
 function viewReceipt(proof, type) {
   const modal = document.getElementById('receiptModal');
   const content = document.getElementById('receiptContent');
@@ -482,7 +499,10 @@ function closeReceiptModal() {
   document.getElementById('receiptModal').classList.remove('active');
 }
 
-// === КУРСЫ ===
+// ========================================
+// КУРСЫ
+// ========================================
+
 async function loadCourses() {
   try {
     const response = await fetch('/api/courses');
@@ -598,7 +618,6 @@ function displayCoursesStats(courses) {
   `;
 }
 
-// Модал для курса
 function openCourseModal(courseId = null) {
   currentCourseId = courseId;
   const modal = document.getElementById('courseModal');
@@ -640,7 +659,6 @@ function closeCourseModal() {
 function toggleCourseFields() {
   const type = document.getElementById('courseType').value;
 
-  // Для книги и видео показываем поле для файла
   const fileUrlGroup = document.getElementById('fileUrlGroup');
   const lessonsCountGroup = document.getElementById('lessonsCountGroup');
   const priceMonthlyGroup = document.getElementById('priceMonthlyGroup');
@@ -656,7 +674,6 @@ function toggleCourseFields() {
   }
 }
 
-// Сохранение курса
 document.getElementById('courseForm').addEventListener('submit', async (e) => {
   e.preventDefault();
 
@@ -727,7 +744,10 @@ async function deleteCourse(id) {
   }
 }
 
-// === УРОКИ ===
+// ========================================
+// УРОКИ
+// ========================================
+
 async function openLessonsModal(courseId) {
   currentCourseId = courseId;
   const course = allCourses.find(c => c.id === courseId);
@@ -795,7 +815,6 @@ function displayLessons() {
   `).join('');
 }
 
-// Обновление данных урока без перерисовки
 function updateLessonData(index, field, value) {
   if (currentLessons[index]) {
     currentLessons[index][field] = value;
@@ -814,11 +833,9 @@ function addLessonRow() {
 
   currentLessons.push(newLesson);
 
-  // Перерисовываем только если список был пуст
   if (currentLessons.length === 1) {
     displayLessons();
   } else {
-    // Добавляем только новую строку
     const container = document.getElementById('lessonsList');
     const index = currentLessons.length - 1;
 
@@ -858,8 +875,6 @@ function addLessonRow() {
     `;
 
     container.appendChild(newRow);
-
-    // Фокусируемся на новое поле
     newRow.querySelector('input[data-field="title"]').focus();
   }
 }
@@ -867,12 +882,11 @@ function addLessonRow() {
 function removeLesson(index) {
   if (confirm('Bu darsni o\'chirmoqchimisiz?')) {
     currentLessons.splice(index, 1);
-    displayLessons(); // Перерисовываем весь список
+    displayLessons();
   }
 }
 
 async function saveLessons() {
-  // Собираем финальные данные из инпутов
   const rows = document.querySelectorAll('.lesson-row');
   const lessonsToSave = [];
 
@@ -896,14 +910,12 @@ async function saveLessons() {
   }
 
   try {
-    // Удаляем старые уроки которые были удалены
     for (const lesson of currentLessons) {
       if (lesson.id && !lessonsToSave.find(l => l.id === lesson.id)) {
         await fetch(`/api/lessons/${lesson.id}`, { method: 'DELETE' });
       }
     }
 
-    // Сохраняем новые и обновленные
     for (const lesson of lessonsToSave) {
       if (lesson.id) {
         await fetch(`/api/lessons/${lesson.id}`, {
@@ -920,7 +932,6 @@ async function saveLessons() {
       }
     }
 
-    // Обновляем количество уроков в курсе
     await fetch(`/api/courses/${currentCourseId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -939,8 +950,10 @@ async function saveLessons() {
   }
 }
 
-// === ПОЛЬЗОВАТЕЛИ ===
-// === ПОЛЬЗОВАТЕЛИ ===
+// ========================================
+// ПОЛЬЗОВАТЕЛИ
+// ========================================
+
 async function loadUsers() {
   console.log('📥 Загрузка пользователей...');
 
@@ -948,11 +961,9 @@ async function loadUsers() {
 
   if (!tbody) {
     console.error('❌ Элемент usersTableBody не найден в DOM!');
-    console.log('Доступные элементы tbody:', Array.from(document.querySelectorAll('tbody')).map(el => el.id));
     return;
   }
 
-  // Показываем loader
   tbody.innerHTML = `
     <tr>
       <td colspan="7" class="loading-row">
@@ -970,8 +981,7 @@ async function loadUsers() {
     }
 
     const users = await response.json();
-
-    console.log(`✅ Загружено пользователей: ${users.length}`, users);
+    console.log(`✅ Загружено пользователей: ${users.length}`);
 
     displayUsers(users);
   } catch (error) {
@@ -993,8 +1003,6 @@ async function loadUsers() {
 }
 
 function displayUsers(users) {
-  console.log('🎨 Отображение пользователей:', users.length);
-
   const tbody = document.getElementById('usersTableBody');
 
   if (!tbody) {
@@ -1002,11 +1010,9 @@ function displayUsers(users) {
     return;
   }
 
-  // Очищаем таблицу
   tbody.innerHTML = '';
 
   if (!users || users.length === 0) {
-    console.log('ℹ️ Пользователи не найдены');
     tbody.innerHTML = `
       <tr>
         <td colspan="7" class="loading-row">
@@ -1026,13 +1032,7 @@ function displayUsers(users) {
     return;
   }
 
-  console.log('✅ Создание строк для', users.length, 'пользователей');
-
-  let rowsHTML = '';
-
-  users.forEach((u, index) => {
-    console.log(`Создание строки ${index + 1}:`, u);
-
+  users.forEach((u) => {
     const row = `
       <tr>
         <td><strong>${u.id}</strong></td>
@@ -1052,15 +1052,10 @@ function displayUsers(users) {
       </tr>
     `;
 
-    rowsHTML += row;
+    tbody.innerHTML += row;
   });
-
-  tbody.innerHTML = rowsHTML;
-
-  console.log('✅ Таблица обновлена');
 }
 
-// Поиск пользователей
 function initUserSearch() {
   const searchInput = document.getElementById('searchUsers');
 
@@ -1073,8 +1068,6 @@ function initUserSearch() {
     const search = e.target.value.toLowerCase();
     const rows = document.querySelectorAll('#usersTableBody tr');
 
-    console.log(`🔍 Поиск: "${search}", строк: ${rows.length}`);
-
     rows.forEach(row => {
       const text = row.textContent.toLowerCase();
       row.style.display = text.includes(search) ? '' : 'none';
@@ -1082,18 +1075,10 @@ function initUserSearch() {
   });
 }
 
-// Поиск пользователей
-document.getElementById('searchUsers')?.addEventListener('input', (e) => {
-  const search = e.target.value.toLowerCase();
-  const rows = document.querySelectorAll('#usersTableBody tr');
+// ========================================
+// АДМИНЫ
+// ========================================
 
-  rows.forEach(row => {
-    const text = row.textContent.toLowerCase();
-    row.style.display = text.includes(search) ? '' : 'none';
-  });
-});
-
-// === АДМИНЫ ===
 async function loadAdmins() {
   try {
     const response = await fetch('/api/admins');
@@ -1204,8 +1189,9 @@ async function deleteAdmin(id) {
   }
 }
 
-// === ПРОФИЛЬ ===
-let currentAdminData = null;
+// ========================================
+// ПРОФИЛЬ
+// ========================================
 
 async function loadProfile() {
   try {
@@ -1232,7 +1218,6 @@ function displayProfile(admin) {
   document.getElementById('profileEditFullName').value = admin.full_name;
 }
 
-// Сохранение профиля
 document.getElementById('profileForm')?.addEventListener('submit', async (e) => {
   e.preventDefault();
 
@@ -1253,7 +1238,6 @@ document.getElementById('profileForm')?.addEventListener('submit', async (e) => 
     if (result.success) {
       showToast('✅ Profil yangilandi!', 'success');
 
-      // Обновляем имя в localStorage
       localStorage.setItem('admin_name', data.full_name);
       document.getElementById('adminName').textContent = data.full_name;
 
@@ -1267,7 +1251,6 @@ document.getElementById('profileForm')?.addEventListener('submit', async (e) => 
   }
 });
 
-// Смена пароля в профиле
 document.getElementById('profilePasswordForm')?.addEventListener('submit', async (e) => {
   e.preventDefault();
 
@@ -1305,7 +1288,10 @@ document.getElementById('profilePasswordForm')?.addEventListener('submit', async
   }
 });
 
-// === РАССЫЛКА ===
+// ========================================
+// BROADCAST (РАССЫЛКА)
+// ========================================
+
 async function loadBroadcastStats() {
   try {
     const response = await fetch('/api/broadcast/stats');
@@ -1325,167 +1311,278 @@ async function loadBroadcastStats() {
   }
 }
 
-// Тестовая рассылка
-async function testBroadcast() {
-  const message = document.getElementById('broadcastMessage').value;
+function toggleBroadcastType() {
+  const type = document.querySelector('input[name="broadcastType"]:checked').value;
+  const photoGroup = document.getElementById('photoUploadGroup');
+  const messageLabel = document.getElementById('messageLabel');
+  const messageInput = document.getElementById('broadcastMessage');
 
-  if (!message.trim()) {
-    showToast('❌ Xabar matnini kiriting', 'error');
+  console.log('🔄 Переключение типа на:', type);
+
+  if (type === 'photo') {
+    photoGroup.style.display = 'block';
+    messageLabel.textContent = 'Rasm tagiga matn (ixtiyoriy)';
+    messageInput.required = false;
+    messageInput.placeholder = 'Rasm tagiga matn yozing (bo\'sh qoldirish mumkin)';
+  } else {
+    photoGroup.style.display = 'none';
+    messageLabel.textContent = 'Xabar matni *';
+    messageInput.required = true;
+    messageInput.placeholder = 'Xabar matnini kiriting...';
+    removeBroadcastPhoto();
+  }
+}
+
+function previewBroadcastPhoto(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  console.log('📸 Выбран файл:', file.name, file.size);
+
+  if (file.size > 10 * 1024 * 1024) {
+    showToast('Rasm hajmi 10MB dan katta bo\'lmasligi kerak!', 'error');
+    event.target.value = '';
     return;
   }
 
+  const reader = new FileReader();
+  reader.onload = function (e) {
+    document.getElementById('photoPreviewImg').src = e.target.result;
+    document.getElementById('photoPreview').style.display = 'block';
+  };
+  reader.readAsDataURL(file);
+}
+
+function removeBroadcastPhoto() {
+  const photoInput = document.getElementById('broadcastPhoto');
+  const photoPreview = document.getElementById('photoPreview');
+  const photoPreviewImg = document.getElementById('photoPreviewImg');
+
+  if (photoInput) photoInput.value = '';
+  if (photoPreview) photoPreview.style.display = 'none';
+  if (photoPreviewImg) photoPreviewImg.src = '';
+
+  console.log('🗑️ Фото удалено');
+}
+
+async function testBroadcast(e) {
+  e.preventDefault();
+  e.stopPropagation();
+
+  const type = document.querySelector('input[name="broadcastType"]:checked').value;
+  const message = document.getElementById('broadcastMessage').value.trim();
+  const photoInput = document.getElementById('broadcastPhoto');
+
+  if (type === 'text' && !message) {
+    showToast('Xabar matnini kiriting!', 'error');
+    return;
+  }
+
+  if (type === 'photo' && !photoInput.files[0]) {
+    showToast('Rasm yuklang!', 'error');
+    return;
+  }
+
+  const btn = document.getElementById('testBroadcastBtn');
+  btn.classList.add('loading');
+  btn.disabled = true;
+
   try {
+    const formData = new FormData();
+    formData.append('message', message);
+    formData.append('type', type);
+
+    if (type === 'photo' && photoInput.files[0]) {
+      formData.append('photo', photoInput.files[0]);
+    }
+
     const response = await fetch('/api/broadcast/test', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message })
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+      },
+      body: formData
     });
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Server error');
-    }
+    const data = await response.json();
 
-    const result = await response.json();
-
-    if (result.success) {
-      showToast('✅ Test muvaffaqiyatli!', 'success');
+    if (response.ok) {
+      showToast('✅ Test xabar yuborildi!', 'success');
     } else {
-      showToast('❌ ' + (result.error || 'Xatolik'), 'error');
+      showToast(data.error || 'Xatolik yuz berdi', 'error');
     }
   } catch (error) {
-    console.error('Ошибка тестовой рассылки:', error);
-    showToast('❌ Xatolik: ' + error.message, 'error');
+    console.error('Test broadcast error:', error);
+    showToast('Xatolik yuz berdi', 'error');
+  } finally {
+    btn.classList.remove('loading');
+    btn.disabled = false;
   }
 }
 
-// Массовая рассылка
-document.getElementById('broadcastForm')?.addEventListener('submit', async (e) => {
-  e.preventDefault();
-
-  const message = document.getElementById('broadcastMessage').value;
-
-  if (!message.trim()) {
-    showToast('❌ Xabar matnini kiriting', 'error');
+function initBroadcastForm() {
+  if (broadcastFormInitialized) {
+    console.log('⚠️ Broadcast форма уже инициализирована');
     return;
   }
 
-  const usersCount = parseInt(document.getElementById('broadcastUsersCount').textContent) || 0;
-
-  if (usersCount === 0) {
-    showToast('❌ Foydalanuvchilar yo\'q', 'error');
+  const broadcastForm = document.getElementById('broadcastForm');
+  if (!broadcastForm) {
+    console.log('⚠️ Форма broadcast не найдена');
     return;
   }
 
-  if (!confirm(`Hammaga xabar yuborilsinmi?\n\nJami: ${usersCount} foydalanuvchi`)) return;
+  console.log('✅ Инициализация broadcast формы');
 
-  const progressDiv = document.getElementById('broadcastProgress');
-  const progressBar = document.getElementById('broadcastProgressBar');
-  const sentSpan = document.getElementById('broadcastSent');
-  const totalSpan = document.getElementById('broadcastTotal');
+  // 1. Обработчики для переключения типа
+  const broadcastTypeRadios = document.querySelectorAll('input[name="broadcastType"]');
+  broadcastTypeRadios.forEach(radio => {
+    radio.addEventListener('change', toggleBroadcastType);
+  });
 
-  progressDiv.style.display = 'block';
-  totalSpan.textContent = usersCount;
-  sentSpan.textContent = 0;
-  progressBar.style.width = '0%';
+  // 2. Обработчик кнопки выбора фото
+  const photoUploadBtn = document.getElementById('photoUploadBtn');
+  const broadcastPhotoInput = document.getElementById('broadcastPhoto');
 
-  try {
-    const response = await fetch('/api/broadcast/send', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message })
+  if (photoUploadBtn && broadcastPhotoInput) {
+    photoUploadBtn.addEventListener('click', function (e) {
+      e.preventDefault();
+      broadcastPhotoInput.click();
     });
+  }
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Server error');
+  // 3. Обработчик выбора файла
+  if (broadcastPhotoInput) {
+    broadcastPhotoInput.addEventListener('change', previewBroadcastPhoto);
+  }
+
+  // 4. Обработчик удаления фото
+  const removePhotoBtn = document.getElementById('removePhotoBtn');
+  if (removePhotoBtn) {
+    removePhotoBtn.addEventListener('click', function (e) {
+      e.preventDefault();
+      removeBroadcastPhoto();
+    });
+  }
+
+  // 5. Обработчик кнопки теста
+  const testBroadcastBtn = document.getElementById('testBroadcastBtn');
+  if (testBroadcastBtn) {
+    testBroadcastBtn.addEventListener('click', testBroadcast);
+  }
+
+  // 6. Обработчик submit формы (ТОЛЬКО ОДИН РАЗ!)
+  broadcastForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    console.log('📤 Submit формы broadcast');
+
+    const type = document.querySelector('input[name="broadcastType"]:checked').value;
+    const message = document.getElementById('broadcastMessage').value.trim();
+    const photoInput = document.getElementById('broadcastPhoto');
+
+    console.log('   Type:', type);
+    console.log('   Message:', message);
+    console.log('   Photo:', photoInput.files[0] ? photoInput.files[0].name : 'нет');
+
+    if (type === 'text' && !message) {
+      showToast('Xabar matnini kiriting!', 'error');
+      return;
     }
 
-    const result = await response.json();
-
-    if (result.success) {
-      // Симуляция прогресса
-      let sent = 0;
-      const interval = setInterval(() => {
-        sent += Math.floor(Math.random() * 3) + 1;
-        if (sent >= usersCount) {
-          sent = usersCount;
-          clearInterval(interval);
-
-          setTimeout(() => {
-            progressDiv.style.display = 'none';
-            showToast(`✅ Xabar yuborildi! Jami: ${usersCount}`, 'success');
-            document.getElementById('broadcastForm').reset();
-          }, 1000);
-        }
-
-        sentSpan.textContent = sent;
-        progressBar.style.width = ((sent / usersCount) * 100) + '%';
-      }, 100);
-    } else {
-      progressDiv.style.display = 'none';
-      showToast('❌ ' + (result.error || 'Xatolik'), 'error');
+    if (type === 'photo' && !photoInput.files[0]) {
+      showToast('Rasm yuklang!', 'error');
+      return;
     }
-  } catch (error) {
-    console.error('Ошибка рассылки:', error);
-    progressDiv.style.display = 'none';
-    showToast('❌ Xatolik: ' + error.message, 'error');
-  }
-});
 
-// Обновите switchTab
-function switchTab(tabName) {
-  console.log('📑 Переключение на таб:', tabName);
+    if (!confirm('Barcha foydalanuvchilarga xabar yuborilsinmi?')) {
+      console.log('❌ Отменено пользователем');
+      return;
+    }
 
-  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    const submitBtn = broadcastForm.querySelector('button[type="submit"]');
+    submitBtn.classList.add('loading');
+    submitBtn.disabled = true;
 
-  const activeBtn = document.querySelector(`[data-tab="${tabName}"]`);
-  if (activeBtn) activeBtn.classList.add('active');
+    try {
+      document.getElementById('broadcastProgress').style.display = 'block';
 
-  const activeTab = document.getElementById(tabName);
-  if (activeTab) activeTab.classList.add('active');
+      const formData = new FormData();
+      formData.append('message', message);
+      formData.append('type', type);
 
-  const titles = {
-    'dashboard': 'Dashboard',
-    'purchases': 'To\'lovlar',
-    'courses': 'Kurslar',
-    'users': 'Foydalanuvchilar',
-    'broadcast': 'Xabarlar',
-    'admins': 'Adminlar',
-    'profile': 'Profil'
-  };
-  document.getElementById('pageTitle').textContent = titles[tabName] || tabName;
+      if (type === 'photo' && photoInput.files[0]) {
+        formData.append('photo', photoInput.files[0]);
+        console.log('✅ Файл добавлен в FormData');
+      }
 
-  // Загружаем данные для конкретного таба
-  if (tabName === 'users') loadUsers();
-  if (tabName === 'admins') loadAdmins();
-  if (tabName === 'broadcast') loadBroadcastStats();
-  if (tabName === 'profile') loadProfile();
+      console.log('📡 Отправка запроса...');
 
-  if (window.innerWidth <= 768) {
-    document.querySelector('.sidebar').classList.remove('active');
-  }
+      const response = await fetch('/api/broadcast/send', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+        },
+        body: formData
+      });
+
+      console.log('📥 Ответ получен:', response.status);
+
+      const data = await response.json();
+      console.log('📦 Данные:', data);
+
+      if (response.ok) {
+        document.getElementById('broadcastTotal').textContent = data.total;
+        document.getElementById('broadcastSent').textContent = data.sent || data.total;
+        document.getElementById('broadcastProgressBar').style.width = '100%';
+
+        showToast(`✅ ${data.total} ta foydalanuvchiga yuborilmoqda!`, 'success');
+
+        document.getElementById('broadcastMessage').value = '';
+        removeBroadcastPhoto();
+        document.querySelector('input[name="broadcastType"][value="text"]').checked = true;
+        toggleBroadcastType();
+
+        setTimeout(() => {
+          document.getElementById('broadcastProgress').style.display = 'none';
+        }, 3000);
+      } else {
+        console.error('❌ Ошибка:', data.error);
+        showToast(data.error || 'Xatolik yuz berdi', 'error');
+      }
+    } catch (error) {
+      console.error('❌ Broadcast error:', error);
+      showToast('Xatolik yuz berdi: ' + error.message, 'error');
+    } finally {
+      submitBtn.classList.remove('loading');
+      submitBtn.disabled = false;
+    }
+  });
+
+  // 7. Загрузка статистики
+  loadBroadcastStats();
+
+  broadcastFormInitialized = true;
+  console.log('✅ Broadcast форма инициализирована');
 }
 
-// Автообновление
-setInterval(() => {
-  loadPurchases();
-}, 30000);
+// ========================================
+// ИНИЦИАЛИЗАЦИЯ
+// ========================================
 
-// Инициализация
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', function () {
   console.log('🎨 Admin Panel загружен');
 
-  // Проверяем наличие важных элементов
   console.log('🔍 Проверка элементов DOM:');
   console.log('   purchasesTableBody:', !!document.getElementById('purchasesTableBody'));
   console.log('   usersTableBody:', !!document.getElementById('usersTableBody'));
   console.log('   coursesGrid:', !!document.getElementById('coursesGrid'));
   console.log('   adminsGrid:', !!document.getElementById('adminsGrid'));
 
-  // Инициализируем поиск
+  // Инициализация
   initUserSearch();
+  initBroadcastForm(); // ТОЛЬКО ОДИН РАЗ!
 
   // Загружаем данные
   loadStats();
@@ -1497,6 +1594,11 @@ document.addEventListener('DOMContentLoaded', () => {
   if (activeTab && activeTab.id === 'users') {
     loadUsers();
   }
+
+  // Автообновление покупок каждые 30 секунд
+  setInterval(() => {
+    loadPurchases();
+  }, 30000);
 
   setTimeout(() => {
     showToast('👋 Xush kelibsiz!', 'success');

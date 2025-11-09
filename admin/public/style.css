@@ -928,6 +928,10 @@ body {
     font-weight: 500;
 }
 
+.form-checker {
+    display: none;
+}
+
 .search-input {
     padding: 11px 18px;
     border: 1px solid rgba(0, 0, 0, 0.08);

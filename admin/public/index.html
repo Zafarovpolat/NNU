@@ -367,15 +367,76 @@
 
         <div class="broadcast-form-container">
           <form id="broadcastForm">
+            <!-- Тип рассылки -->
             <div class="form-group">
-              <label for="broadcastMessage">Xabar matni *</label>
+              <label>Xabar turi</label>
+              <div style="display: flex; gap: 12px; margin-top: 8px;">
+                <label class="broadcast-type-label"
+                  style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 12px 20px; border: 2px solid #e0e0e0; border-radius: 10px; flex: 1; transition: all 0.2s;">
+                  <input type="radio" name="broadcastType" value="text" checked style="width: 18px; height: 18px;">
+                  <span style="font-weight: 600;">📝 Faqat matn</span>
+                </label>
+                <label class="broadcast-type-label"
+                  style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 12px 20px; border: 2px solid #e0e0e0; border-radius: 10px; flex: 1; transition: all 0.2s;">
+                  <input type="radio" name="broadcastType" value="photo" style="width: 18px; height: 18px;">
+                  <span style="font-weight: 600;">🖼️ Rasm + matn</span>
+                </label>
+              </div>
+            </div>
+
+            <!-- Загрузка фото -->
+            <div class="form-group" id="photoUploadGroup" style="display: none;">
+              <label for="broadcastPhoto">Rasm yuklash</label>
+              <div style="position: relative;">
+                <input type="file" id="broadcastPhoto" accept="image/*" style="display: none;">
+                <button type="button" id="photoUploadBtn"
+                  style="width: 100%; padding: 20px; border: 2px dashed #d0d0d0; border-radius: 12px; background: #f9f9f9; cursor: pointer; transition: all 0.2s;">
+                  <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#8b1538" stroke-width="2"
+                    style="margin: 0 auto 8px; display: block;">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                    <circle cx="8.5" cy="8.5" r="1.5" />
+                    <polyline points="21 15 16 10 5 21" />
+                  </svg>
+                  <p style="color: var(--primary); font-weight: 600; margin: 0;">Rasm tanlash uchun bosing</p>
+                  <small style="color: #6c757d; margin-top: 4px; display: block;">JPG, PNG, GIF (max 10MB)</small>
+                </button>
+              </div>
+              <!-- Превью фото -->
+              <div id="photoPreview" style="display: none; margin-top: 12px; position: relative;">
+                <img id="photoPreviewImg"
+                  style="max-width: 100%; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+                <button type="button" id="removePhotoBtn"
+                  style="position: absolute; top: 8px; right: 8px; width: 32px; height: 32px; border: none; background: rgba(220, 53, 69, 0.9); color: white; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center;">
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            <!-- Текст сообщения -->
+            <div class="form-group">
+              <label for="broadcastMessage">
+                <span id="messageLabel">Xabar matni *</span>
+              </label>
               <textarea id="broadcastMessage" rows="8" required placeholder="Xabar matnini kiriting..."
                 style="resize: vertical; min-height: 200px;"></textarea>
-              <small>HTML formatda yozishingiz mumkin: &lt;b&gt;qalin&lt;/b&gt;, &lt;i&gt;kursiv&lt;/i&gt;,
-                &lt;code&gt;kod&lt;/code&gt;</small>
+              <small>HTML formatda: &lt;b&gt;qalin&lt;/b&gt;, &lt;i&gt;kursiv&lt;/i&gt;, &lt;a
+                href="..."&gt;havola&lt;/a&gt;</small>
+            </div>
+
+            <div class="form-group form-checker">
+              <label>
+                <input type="checkbox" id="broadcastPreview" style="margin-right: 8px;">
+                Avval o'zimga yuborish (test)
+              </label>
             </div>
 
             <div class="broadcast-actions">
+              <button type="button" class="btn-secondary" id="testBroadcastBtn">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+                </svg>
+                Test yuborish
+              </button>
               <button type="submit" class="btn-primary">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <line x1="22" y1="2" x2="11" y2="13" />
