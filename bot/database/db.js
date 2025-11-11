@@ -237,10 +237,42 @@ const dbHelpers = {
 
     // === ПОЛЬЗОВАТЕЛИ ===
     createUser: (telegramId, username, fullName, callback) => {
+        // ✅ Принудительно приводим к строке и очищаем
+        const cleanUsername = username && typeof username === 'string'
+            ? username.trim()
+            : '';
+
+        console.log('🔍 createUser вызван:');
+        console.log('   telegramId:', telegramId);
+        console.log('   username (raw):', username);
+        console.log('   username (type):', typeof username);
+        console.log('   cleanUsername:', cleanUsername);
+        console.log('   fullName:', fullName);
+
         db.run(
             'INSERT OR IGNORE INTO users (telegram_id, username, full_name) VALUES (?, ?, ?)',
-            [telegramId, username, fullName],
-            callback
+            [telegramId, cleanUsername, fullName],
+            function (err) {
+                if (err) {
+                    console.error('❌ Ошибка SQL при создании пользователя:', err);
+                } else {
+                    console.log('✅ Пользователь создан/обновлен. Changes:', this.changes, 'LastID:', this.lastID);
+
+                    // Проверяем что реально сохранилось
+                    db.get(
+                        'SELECT * FROM users WHERE telegram_id = ?',
+                        [telegramId],
+                        (err, user) => {
+                            if (user) {
+                                console.log('✅ Проверка БД после вставки:');
+                                console.log('   username в БД:', user.username);
+                                console.log('   full_name в БД:', user.full_name);
+                            }
+                        }
+                    );
+                }
+                callback.call(this, err);
+            }
         );
     },
 

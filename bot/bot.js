@@ -40,10 +40,17 @@ bot.onText(/\/start/, async (msg) => {
     const chatId = msg.chat.id;
     const telegramId = msg.from.id;
 
-    // ✅ ИСПРАВЛЕНО: Безопасное получение username
-    const username = msg.from.username || '';
+    // ✅ ИСПРАВЛЕНО: Гарантируем что это строка
+    const username = String(msg.from.username || '').trim();
 
-    console.log(`📱 /start от пользователя: ${telegramId}, username: ${username}`);
+    console.log('═══════════════════════════════════');
+    console.log('📱 /start команда:');
+    console.log('   Telegram ID:', telegramId);
+    console.log('   Username (raw):', msg.from.username);
+    console.log('   Username (clean):', username);
+    console.log('   First name:', msg.from.first_name);
+    console.log('   Last name:', msg.from.last_name);
+    console.log('═══════════════════════════════════');
 
     db.getUserByTelegramId(telegramId, async (err, user) => {
         if (err) {
@@ -52,7 +59,28 @@ bot.onText(/\/start/, async (msg) => {
         }
 
         if (user) {
-            // Пользователь уже зарегистрирован
+            console.log('✅ Пользователь найден:', {
+                id: user.id,
+                username: user.username,
+                full_name: user.full_name
+            });
+
+            // Обновляем username если его нет в БД, но есть в Telegram
+            if (username && (!user.username || user.username === '')) {
+                console.log('🔄 Обновляем username в БД:', username);
+                db.db.run(
+                    'UPDATE users SET username = ? WHERE telegram_id = ?',
+                    [username, telegramId],
+                    (err) => {
+                        if (err) {
+                            console.error('Ошибка обновления username:', err);
+                        } else {
+                            console.log('✅ Username обновлен');
+                        }
+                    }
+                );
+            }
+
             bot.sendMessage(
                 chatId,
                 `👋 Xush kelibsiz, ${user.full_name}!\n\n` +
@@ -61,10 +89,11 @@ bot.onText(/\/start/, async (msg) => {
                 mainMenu
             );
         } else {
-            // Новый пользователь - начинаем регистрацию
+            console.log('🆕 Новый пользователь, начинаем регистрацию');
+
             userStates.set(telegramId, {
                 step: 'waiting_full_name',
-                username: username // Сохраняем username для дальнейшего использования
+                username: username // ✅ Сохраняем для дальнейшего использования
             });
 
             bot.sendMessage(
@@ -130,6 +159,7 @@ bot.on('message', async (msg) => {
     }
 
     // Шаг 2: Получение телефона
+    // Шаг 2: Получение телефона
     if (state.step === 'waiting_phone') {
         let phoneNumber = null;
 
@@ -139,15 +169,12 @@ bot.on('message', async (msg) => {
         }
         // Если введен вручную
         else if (text) {
-            // Очищаем номер от лишних символов
             phoneNumber = text.replace(/[^\d+]/g, '');
 
-            // Добавляем + если его нет
             if (!phoneNumber.startsWith('+')) {
                 phoneNumber = '+998' + phoneNumber.replace(/^998/, '');
             }
 
-            // Проверка формата
             if (!/^\+998\d{9}$/.test(phoneNumber)) {
                 return bot.sendMessage(
                     chatId,
@@ -160,20 +187,39 @@ bot.on('message', async (msg) => {
             return bot.sendMessage(chatId, '❌ Iltimos, telefon raqamingizni yuboring.');
         }
 
-        // ✅ ИСПРАВЛЕНО: Берем username из state (сохранили при /start)
-        // Или пытаемся получить из текущего msg
-        const username = state.username || msg.from.username || '';
+        // ✅ ИСПРАВЛЕНО: Получаем username из нескольких источников
+        let username = '';
 
-        console.log('📝 Создание пользователя:', {
-            telegramId,
-            username,
-            full_name: state.full_name,
-            phone: phoneNumber
-        });
+        // 1. Из state (сохранили при /start)
+        if (state.username) {
+            username = state.username;
+        }
+        // 2. Из текущего сообщения
+        else if (msg.from.username) {
+            username = msg.from.username;
+        }
+        // 3. Из контакта (если есть)
+        else if (msg.contact && msg.contact.user_id === telegramId) {
+            // Telegram не передает username в контакте, используем имя
+            username = '';
+        }
+
+        // Убеждаемся что это строка
+        username = String(username || '').trim();
+
+        console.log('═══════════════════════════════════');
+        console.log('📝 РЕГИСТРАЦИЯ ПОЛЬЗОВАТЕЛЯ:');
+        console.log('   Telegram ID:', telegramId);
+        console.log('   Username:', username);
+        console.log('   Username (type):', typeof username);
+        console.log('   Имя:', state.full_name);
+        console.log('   Телефон:', phoneNumber);
+        console.log('   Источник username:', state.username ? 'state' : msg.from.username ? 'msg.from' : 'нет');
+        console.log('═══════════════════════════════════');
 
         db.createUser(
             telegramId,
-            username, // ✅ Это должна быть строка
+            username, // ✅ Гарантированно строка
             state.full_name,
             (err) => {
                 if (err) {
@@ -182,7 +228,7 @@ bot.on('message', async (msg) => {
                     return bot.sendMessage(chatId, '❌ Xatolik yuz berdi. Qaytadan /start bosing.');
                 }
 
-                console.log('✅ Пользователь создан');
+                console.log('✅ Пользователь успешно создан');
 
                 // Обновляем телефон
                 db.updateUserPhone(telegramId, phoneNumber, (err) => {
@@ -194,12 +240,14 @@ bot.on('message', async (msg) => {
 
                     userStates.delete(telegramId);
 
+                    const usernameDisplay = username ? `@${username}` : 'Yo\'q';
+
                     bot.sendMessage(
                         chatId,
                         `✅ <b>Ro'yxatdan o'tish muvaffaqiyatli!</b>\n\n` +
                         `👤 Ism: ${state.full_name}\n` +
                         `📱 Telefon: ${phoneNumber}\n` +
-                        `💬 Username: ${username ? '@' + username : 'Yo\'q'}\n\n` +
+                        `💬 Username: ${usernameDisplay}\n\n` +
                         `📚 Endi siz kurslarni ko'rishingiz va sotib olishingiz mumkin.\n` +
                         `🎫 QR kodingizni olish uchun "Mening QR kodim" tugmasini bosing.`,
                         {
