@@ -1,7 +1,14 @@
 const sqlite3 = require('sqlite3').verbose();
 const crypto = require('crypto');
-const { v4: uuidv4 } = require('uuid');
 const config = require('../../config');
+
+function generateUUID() {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+        const r = Math.random() * 16 | 0;
+        const v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+    });
+}
 
 const db = new sqlite3.Database(config.DB_PATH);
 
@@ -292,7 +299,8 @@ const dbHelpers = {
 
     // === QR-КОДЫ ===
     generateQRToken: (telegramId, callback) => {
-        const token = uuidv4();
+        // ✅ Используем нашу функцию вместо uuid
+        const token = generateUUID();
 
         db.run(
             'UPDATE users SET qr_code_token = ?, qr_generated = 1 WHERE telegram_id = ?',

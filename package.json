@@ -23,6 +23,6 @@
         "node-telegram-bot-api": "^0.64.0",
         "qrcode": "^1.5.4",
         "sqlite3": "^5.1.6",
-        "uuid": "^13.0.0"
+        "uuid": "^9.0.1"
     }
 }
