@@ -841,6 +841,8 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public/index.html'));
 });
 
+// === ПУБЛИЧНАЯ СТРАНИЦА СТУДЕНТА ===
+
 app.get('/student/:token', (req, res) => {
     const { token } = req.params;
 
@@ -849,7 +851,43 @@ app.get('/student/:token', (req, res) => {
     db.getUserByQRToken(token, (err, user) => {
         if (err) {
             console.error('Ошибка получения студента:', err);
-            return res.status(500).send('Ошибка сервера');
+            return res.status(500).send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Xatolik</title>
+          <style>
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+              display: flex;
+              justify-content: center;
+              align-items: center;
+              min-height: 100vh;
+              margin: 0;
+              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            }
+            .error-card {
+              background: white;
+              padding: 40px;
+              border-radius: 20px;
+              box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+              text-align: center;
+              max-width: 400px;
+            }
+            h1 { color: #dc3545; margin-bottom: 16px; }
+            p { color: #6c757d; }
+          </style>
+        </head>
+        <body>
+          <div class="error-card">
+            <h1>❌ Xatolik</h1>
+            <p>Server xatosi. Qaytadan urinib ko'ring.</p>
+          </div>
+        </body>
+        </html>
+      `);
         }
 
         if (!user) {
@@ -909,12 +947,13 @@ app.get('/student/:token', (req, res) => {
                 const coursesHTML = courses.length > 0
                     ? courses.map(c => {
                         const icon = c.type === 'course' ? '📚' : c.type === 'book' ? '📖' : '🎥';
+                        const date = new Date(c.created_at);
                         return `
               <div class="course-item">
                 <span class="course-icon">${icon}</span>
                 <div class="course-info">
                   <div class="course-title">${c.title}</div>
-                  <div class="course-date">${new Date(c.created_at).toLocaleDateString('uz-UZ')}</div>
+                  <div class="course-date">${date.toLocaleDateString('uz-UZ')}</div>
                 </div>
                 <div class="course-amount">${c.amount.toLocaleString()} so'm</div>
               </div>
@@ -928,7 +967,7 @@ app.get('/student/:token', (req, res) => {
           <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>${user.full_name} - Najot Nur</title>
+            <title>${user.full_name || 'Talaba'} - Najot Nur</title>
             <style>
               * {
                 margin: 0;
@@ -1070,8 +1109,8 @@ app.get('/student/:token', (req, res) => {
             <div class="container">
               <div class="card">
                 <div class="card-header">
-                  <div class="avatar">${user.full_name.charAt(0).toUpperCase()}</div>
-                  <div class="student-name">${user.full_name}</div>
+                  <div class="avatar">${(user.full_name || 'T').charAt(0).toUpperCase()}</div>
+                  <div class="student-name">${user.full_name || 'Foydalanuvchi'}</div>
                   <div class="student-phone">📱 ${user.phone_number || 'Telefon kiritilmagan'}</div>
                 </div>
 
@@ -1115,7 +1154,6 @@ app.get('/student/:token', (req, res) => {
         );
     });
 });
-
 // Запуск сервера
 const server = app.listen(config.ADMIN_PORT, () => {
     console.log(`✅ Admin panel: http://localhost:${config.ADMIN_PORT}`);

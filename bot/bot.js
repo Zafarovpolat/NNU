@@ -212,6 +212,15 @@ bot.onText(/🎫 Mening QR kodim/, async (msg) => {
             return bot.sendMessage(chatId, '❌ Foydalanuvchi topilmadi. /start bosing.');
         }
 
+        // ✅ ИСПРАВЛЕНО: Проверяем имя
+        let fullName = user.full_name;
+        if (!fullName || fullName === 'null') {
+            fullName = msg.from.first_name || 'Foydalanuvchi';
+            if (msg.from.last_name) {
+                fullName += ' ' + msg.from.last_name;
+            }
+        }
+
         if (user.qr_generated && user.qr_code_token) {
             const qrPath = getExistingQR(telegramId);
 
@@ -222,7 +231,7 @@ bot.onText(/🎫 Mening QR kodim/, async (msg) => {
                 await bot.sendPhoto(chatId, qrPath, {
                     caption:
                         `🎫 <b>Sizning QR kodingiz</b>\n\n` +
-                        `👤 ${user.full_name}\n` +
+                        `👤 ${fullName}\n` + // ✅ Используем проверенное имя
                         `📱 ${user.phone_number || 'Telefon kiritilmagan'}\n\n` +
                         `Bu QR kodni skanerlash orqali sizning ma'lumotlaringizni ko'rish mumkin.`,
                     parse_mode: 'HTML',
@@ -277,6 +286,23 @@ bot.on('callback_query', async (query) => {
                 return bot.sendMessage(chatId, '⚠️ QR kod allaqachon yaratilgan!');
             }
 
+            // ✅ ИСПРАВЛЕНО: Проверяем и обновляем имя если нужно
+            let fullName = user.full_name;
+
+            if (!fullName || fullName === 'null') {
+                // Берем имя из Telegram
+                fullName = query.from.first_name || 'Foydalanuvchi';
+                if (query.from.last_name) {
+                    fullName += ' ' + query.from.last_name;
+                }
+
+                // Обновляем в БД
+                db.db.run(
+                    'UPDATE users SET full_name = ? WHERE telegram_id = ?',
+                    [fullName, telegramId]
+                );
+            }
+
             db.generateQRToken(telegramId, async (err, token) => {
                 if (err) {
                     console.error('Ошибка генерации токена:', err);
@@ -285,14 +311,12 @@ bot.on('callback_query', async (query) => {
 
                 try {
                     const qrPath = await generateStudentQR(token, telegramId);
-
-                    // ✅ ИСПРАВЛЕНО: Используем Railway URL
                     const baseUrl = process.env.BASE_URL || 'https://web-production-c55f0.up.railway.app';
 
                     await bot.sendPhoto(chatId, qrPath, {
                         caption:
                             `✅ <b>QR kod muvaffaqiyatli yaratildi!</b>\n\n` +
-                            `👤 ${user.full_name}\n` +
+                            `👤 ${fullName}\n` + // ✅ Используем проверенное имя
                             `📱 ${user.phone_number || 'Telefon kiritilmagan'}\n\n` +
                             `Bu QR kodni saqlang va kerak bo'lganda ko'rsating.`,
                         parse_mode: 'HTML',
