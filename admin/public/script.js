@@ -1033,6 +1033,11 @@ function displayUsers(users) {
   }
 
   users.forEach((u) => {
+    // ✅ ИСПРАВЛЕНО: Безопасная обработка username
+    const displayUsername = u.username && u.username !== 'null' && u.username !== '[object Object]'
+      ? '@' + u.username
+      : '-';
+
     const row = `
       <tr>
         <td><strong>${u.id}</strong></td>
@@ -1040,7 +1045,7 @@ function displayUsers(users) {
           <div style="font-weight: 600; margin-bottom: 4px;">${u.full_name || 'N/A'}</div>
           <div style="font-size: 11px; color: #6c757d;">ID: ${u.telegram_id}</div>
         </td>
-        <td>${u.username ? '@' + u.username : '-'}</td>
+        <td>${displayUsername}</td>
         <td><code style="font-size: 12px; background: #f8f9fa; padding: 4px 8px; border-radius: 4px;">${u.telegram_id}</code></td>
         <td>
           <span style="display: inline-block; background: var(--primary); color: white; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 600;">

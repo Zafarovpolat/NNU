@@ -1,5 +1,6 @@
 const sqlite3 = require('sqlite3').verbose();
 const crypto = require('crypto');
+const { v4: uuidv4 } = require('uuid');
 const config = require('../../config');
 
 const db = new sqlite3.Database(config.DB_PATH);
@@ -18,11 +19,66 @@ db.serialize(() => {
       telegram_id INTEGER UNIQUE,
       full_name TEXT,
       username TEXT,
+      phone_number TEXT,
+      qr_code_token TEXT UNIQUE,
+      qr_generated INTEGER DEFAULT 0,
       state TEXT DEFAULT 'start',
       notifications_enabled INTEGER DEFAULT 1,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+    // Миграция: добавление новых полей если их нет
+    db.all("PRAGMA table_info(users)", (err, columns) => {
+        if (err) {
+            console.error('Ошибка получения структуры таблицы:', err);
+            return;
+        }
+
+        const columnNames = columns.map(c => c.name);
+
+        // 1. Добавляем phone_number
+        if (!columnNames.includes('phone_number')) {
+            db.run('ALTER TABLE users ADD COLUMN phone_number TEXT', (err) => {
+                if (err && !err.message.includes('duplicate')) {
+                    console.error('Ошибка добавления phone_number:', err);
+                } else {
+                    console.log('✅ Добавлено поле phone_number');
+                }
+            });
+        }
+
+        // 2. Добавляем qr_code_token БЕЗ UNIQUE (SQLite ограничение)
+        if (!columnNames.includes('qr_code_token')) {
+            db.run('ALTER TABLE users ADD COLUMN qr_code_token TEXT', (err) => {
+                if (err && !err.message.includes('duplicate')) {
+                    console.error('Ошибка добавления qr_code_token:', err);
+                } else {
+                    console.log('✅ Добавлено поле qr_code_token');
+
+                    // Создаем уникальный индекс вместо UNIQUE constraint
+                    db.run('CREATE UNIQUE INDEX IF NOT EXISTS idx_qr_token ON users(qr_code_token)', (err) => {
+                        if (err) {
+                            console.error('Ошибка создания индекса:', err);
+                        } else {
+                            console.log('✅ Создан уникальный индекс для qr_code_token');
+                        }
+                    });
+                }
+            });
+        }
+
+        // 3. Добавляем qr_generated
+        if (!columnNames.includes('qr_generated')) {
+            db.run('ALTER TABLE users ADD COLUMN qr_generated INTEGER DEFAULT 0', (err) => {
+                if (err && !err.message.includes('duplicate')) {
+                    console.error('Ошибка добавления qr_generated:', err);
+                } else {
+                    console.log('✅ Добавлено поле qr_generated');
+                }
+            });
+        }
+    });
 
     // Админы
     db.run(`
@@ -141,7 +197,6 @@ const dbHelpers = {
             [username, hashPassword(password)],
             (err, admin) => {
                 if (admin) {
-                    // Обновляем время последнего входа
                     db.run('UPDATE admins SET last_login = CURRENT_TIMESTAMP WHERE id = ?', [admin.id]);
                 }
                 callback(err, admin);
@@ -154,7 +209,7 @@ const dbHelpers = {
     },
 
     deleteAdmin: (id, callback) => {
-        db.run('DELETE FROM admins WHERE id = ? AND id != 1', [id], callback); // Нельзя удалить суперадмина
+        db.run('DELETE FROM admins WHERE id = ? AND id != 1', [id], callback);
     },
 
     changePassword: (adminId, newPassword, callback) => {
@@ -165,10 +220,26 @@ const dbHelpers = {
         );
     },
 
-    // === ПОЛЬЗОВАТЕЛИ ===
-    createUser: (telegramId, callback) => {
+    updateAdmin: (id, username, fullName, callback) => {
         db.run(
-            'INSERT OR IGNORE INTO users (telegram_id) VALUES (?)',
+            'UPDATE admins SET username = ?, full_name = ? WHERE id = ?',
+            [username, fullName, id],
+            callback
+        );
+    },
+
+    // === ПОЛЬЗОВАТЕЛИ ===
+    createUser: (telegramId, username, fullName, callback) => {
+        db.run(
+            'INSERT OR IGNORE INTO users (telegram_id, username, full_name) VALUES (?, ?, ?)',
+            [telegramId, username, fullName],
+            callback
+        );
+    },
+
+    getUserByTelegramId: (telegramId, callback) => {
+        db.get(
+            'SELECT * FROM users WHERE telegram_id = ?',
             [telegramId],
             callback
         );
@@ -198,6 +269,14 @@ const dbHelpers = {
         );
     },
 
+    updateUserPhone: (telegramId, phoneNumber, callback) => {
+        db.run(
+            'UPDATE users SET phone_number = ? WHERE telegram_id = ?',
+            [phoneNumber, telegramId],
+            callback
+        );
+    },
+
     getAllUsers: (callback) => {
         db.all(
             `SELECT u.*, 
@@ -207,6 +286,35 @@ const dbHelpers = {
        LEFT JOIN purchases p ON u.id = p.user_id
        GROUP BY u.id
        ORDER BY u.created_at DESC`,
+            callback
+        );
+    },
+
+    // === QR-КОДЫ ===
+    generateQRToken: (telegramId, callback) => {
+        const token = uuidv4();
+
+        db.run(
+            'UPDATE users SET qr_code_token = ?, qr_generated = 1 WHERE telegram_id = ?',
+            [token, telegramId],
+            function (err) {
+                if (err) return callback(err);
+                callback(null, token);
+            }
+        );
+    },
+
+    getUserByQRToken: (token, callback) => {
+        db.get(
+            `SELECT 
+        u.*,
+        COUNT(DISTINCT p.id) as courses_count,
+        SUM(CASE WHEN p.status = 'paid' THEN p.amount ELSE 0 END) as total_spent
+      FROM users u
+      LEFT JOIN purchases p ON u.id = p.user_id
+      WHERE u.qr_code_token = ?
+      GROUP BY u.id`,
+            [token],
             callback
         );
     },
@@ -359,17 +467,7 @@ const dbHelpers = {
             [purchaseId],
             callback
         );
-    },
-
-    updateAdmin: (id, username, fullName, callback) => {
-        db.run(
-            'UPDATE admins SET username = ?, full_name = ? WHERE id = ?',
-            [username, fullName, id],
-            callback
-        );
-    },
-
-
+    }
 };
 
 module.exports = { db, hashPassword, ...dbHelpers };
