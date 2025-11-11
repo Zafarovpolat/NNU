@@ -851,84 +851,26 @@ app.get('/student/:token', (req, res) => {
     db.getUserByQRToken(token, (err, user) => {
         if (err) {
             console.error('Ошибка получения студента:', err);
-            return res.status(500).send(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Xatolik</title>
-          <style>
-            body {
-              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-              display: flex;
-              justify-content: center;
-              align-items: center;
-              min-height: 100vh;
-              margin: 0;
-              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            }
-            .error-card {
-              background: white;
-              padding: 40px;
-              border-radius: 20px;
-              box-shadow: 0 10px 40px rgba(0,0,0,0.2);
-              text-align: center;
-              max-width: 400px;
-            }
-            h1 { color: #dc3545; margin-bottom: 16px; }
-            p { color: #6c757d; }
-          </style>
-        </head>
-        <body>
-          <div class="error-card">
-            <h1>❌ Xatolik</h1>
-            <p>Server xatosi. Qaytadan urinib ko'ring.</p>
-          </div>
-        </body>
-        </html>
-      `);
+            // ... существующий код ошибки
         }
 
         if (!user) {
-            return res.status(404).send(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Talaba topilmadi</title>
-          <style>
-            body {
-              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-              display: flex;
-              justify-content: center;
-              align-items: center;
-              min-height: 100vh;
-              margin: 0;
-              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            }
-            .error-card {
-              background: white;
-              padding: 40px;
-              border-radius: 20px;
-              box-shadow: 0 10px 40px rgba(0,0,0,0.2);
-              text-align: center;
-              max-width: 400px;
-            }
-            h1 { color: #dc3545; margin-bottom: 16px; }
-            p { color: #6c757d; }
-          </style>
-        </head>
-        <body>
-          <div class="error-card">
-            <h1>❌ Talaba topilmadi</h1>
-            <p>Bunday QR kod mavjud emas yoki o'chirilgan.</p>
-          </div>
-        </body>
-        </html>
-      `);
+            // ... существующий код 404
         }
+
+        // ✅ ИСПРАВЛЕНО: Безопасное получение username
+        const displayUsername = user.username &&
+            user.username !== 'null' &&
+            user.username !== '[object Object]' &&
+            typeof user.username === 'string'
+            ? user.username
+            : String(user.telegram_id);
+
+        console.log('👤 Отображение студента:', {
+            full_name: user.full_name,
+            username: displayUsername,
+            telegram_id: user.telegram_id
+        });
 
         // Получаем купленные курсы
         db.db.all(
@@ -968,142 +910,7 @@ app.get('/student/:token', (req, res) => {
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>${user.full_name || 'Talaba'} - Najot Nur</title>
-            <style>
-              * {
-                margin: 0;
-                padding: 0;
-                box-sizing: border-box;
-              }
-              body {
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                min-height: 100vh;
-                padding: 20px;
-                display: flex;
-                justify-content: center;
-                align-items: center;
-              }
-              .container {
-                max-width: 600px;
-                width: 100%;
-              }
-              .card {
-                background: white;
-                border-radius: 20px;
-                box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-                overflow: hidden;
-                animation: slideUp 0.5s ease;
-              }
-              @keyframes slideUp {
-                from {
-                  opacity: 0;
-                  transform: translateY(30px);
-                }
-                to {
-                  opacity: 1;
-                  transform: translateY(0);
-                }
-              }
-              .card-header {
-                background: linear-gradient(135deg, #8b1538 0%, #a91d42 100%);
-                color: white;
-                padding: 40px 30px;
-                text-align: center;
-              }
-              .avatar {
-                width: 100px;
-                height: 100px;
-                border-radius: 50%;
-                background: white;
-                color: #8b1538;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                font-size: 40px;
-                font-weight: 700;
-                margin: 0 auto 20px;
-                border: 4px solid rgba(255,255,255,0.3);
-              }
-              .student-name {
-                font-size: 28px;
-                font-weight: 700;
-                margin-bottom: 8px;
-              }
-              .student-phone {
-                font-size: 16px;
-                opacity: 0.9;
-              }
-              .card-body {
-                padding: 30px;
-              }
-              .info-section {
-                margin-bottom: 30px;
-              }
-              .section-title {
-                font-size: 14px;
-                font-weight: 600;
-                color: #6c757d;
-                margin-bottom: 12px;
-                text-transform: uppercase;
-                letter-spacing: 0.5px;
-              }
-              .info-row {
-                display: flex;
-                justify-content: space-between;
-                padding: 12px 0;
-                border-bottom: 1px solid #e9ecef;
-              }
-              .info-row:last-child {
-                border-bottom: none;
-              }
-              .info-label {
-                color: #6c757d;
-                font-size: 14px;
-              }
-              .info-value {
-                font-weight: 600;
-                color: #212529;
-              }
-              .course-item {
-                display: flex;
-                align-items: center;
-                gap: 12px;
-                padding: 16px;
-                background: #f8f9fa;
-                border-radius: 12px;
-                margin-bottom: 12px;
-              }
-              .course-icon {
-                font-size: 28px;
-              }
-              .course-info {
-                flex: 1;
-              }
-              .course-title {
-                font-weight: 600;
-                color: #212529;
-                margin-bottom: 4px;
-              }
-              .course-date {
-                font-size: 12px;
-                color: #6c757d;
-              }
-              .course-amount {
-                font-weight: 700;
-                color: #8b1538;
-              }
-              .footer {
-                text-align: center;
-                padding: 20px;
-                background: #f8f9fa;
-                color: #6c757d;
-                font-size: 13px;
-              }
-              .logo {
-                font-weight: 700;
-                color: #8b1538;
-              }
-            </style>
+            <!-- ... existing styles ... -->
           </head>
           <body>
             <div class="container">
@@ -1119,7 +926,7 @@ app.get('/student/:token', (req, res) => {
                     <div class="section-title">Ma'lumotlar</div>
                     <div class="info-row">
                       <span class="info-label">Telegram</span>
-                      <span class="info-value">@${user.username || user.telegram_id}</span>
+                      <span class="info-value">@${displayUsername}</span>
                     </div>
                     <div class="info-row">
                       <span class="info-label">Ro'yxatdan o'tgan</span>
@@ -1154,6 +961,7 @@ app.get('/student/:token', (req, res) => {
         );
     });
 });
+
 // Запуск сервера
 const server = app.listen(config.ADMIN_PORT, () => {
     console.log(`✅ Admin panel: http://localhost:${config.ADMIN_PORT}`);

@@ -40,8 +40,8 @@ bot.onText(/\/start/, async (msg) => {
     const chatId = msg.chat.id;
     const telegramId = msg.from.id;
 
-    // ✅ ИСПРАВЛЕНО: Правильно получаем username
-    const username = msg.from.username ? String(msg.from.username) : '';
+    // ✅ ИСПРАВЛЕНО: Безопасное получение username
+    const username = msg.from.username || '';
 
     console.log(`📱 /start от пользователя: ${telegramId}, username: ${username}`);
 
@@ -62,7 +62,10 @@ bot.onText(/\/start/, async (msg) => {
             );
         } else {
             // Новый пользователь - начинаем регистрацию
-            userStates.set(telegramId, { step: 'waiting_full_name' });
+            userStates.set(telegramId, {
+                step: 'waiting_full_name',
+                username: username // Сохраняем username для дальнейшего использования
+            });
 
             bot.sendMessage(
                 chatId,
@@ -75,6 +78,7 @@ bot.onText(/\/start/, async (msg) => {
         }
     });
 });
+
 // ========================================
 // РЕГИСТРАЦИЯ
 // ========================================
@@ -156,24 +160,36 @@ bot.on('message', async (msg) => {
             return bot.sendMessage(chatId, '❌ Iltimos, telefon raqamingizni yuboring.');
         }
 
-        // ✅ ИСПРАВЛЕНО: Правильно получаем username
-        const username = msg.from.username ? String(msg.from.username) : '';
+        // ✅ ИСПРАВЛЕНО: Берем username из state (сохранили при /start)
+        // Или пытаемся получить из текущего msg
+        const username = state.username || msg.from.username || '';
+
+        console.log('📝 Создание пользователя:', {
+            telegramId,
+            username,
+            full_name: state.full_name,
+            phone: phoneNumber
+        });
 
         db.createUser(
             telegramId,
-            username, // ✅ Теперь это строка, а не объект
+            username, // ✅ Это должна быть строка
             state.full_name,
             (err) => {
                 if (err) {
-                    console.error('Ошибка создания пользователя:', err);
+                    console.error('❌ Ошибка создания пользователя:', err);
                     userStates.delete(telegramId);
                     return bot.sendMessage(chatId, '❌ Xatolik yuz berdi. Qaytadan /start bosing.');
                 }
 
+                console.log('✅ Пользователь создан');
+
                 // Обновляем телефон
                 db.updateUserPhone(telegramId, phoneNumber, (err) => {
                     if (err) {
-                        console.error('Ошибка обновления телефона:', err);
+                        console.error('❌ Ошибка обновления телефона:', err);
+                    } else {
+                        console.log('✅ Телефон обновлен');
                     }
 
                     userStates.delete(telegramId);
@@ -182,7 +198,8 @@ bot.on('message', async (msg) => {
                         chatId,
                         `✅ <b>Ro'yxatdan o'tish muvaffaqiyatli!</b>\n\n` +
                         `👤 Ism: ${state.full_name}\n` +
-                        `📱 Telefon: ${phoneNumber}\n\n` +
+                        `📱 Telefon: ${phoneNumber}\n` +
+                        `💬 Username: ${username ? '@' + username : 'Yo\'q'}\n\n` +
                         `📚 Endi siz kurslarni ko'rishingiz va sotib olishingiz mumkin.\n` +
                         `🎫 QR kodingizni olish uchun "Mening QR kodim" tugmasini bosing.`,
                         {
