@@ -851,34 +851,110 @@ app.get('/student/:token', (req, res) => {
     db.getUserByQRToken(token, (err, user) => {
         if (err) {
             console.error('Ошибка получения студента:', err);
-            // ... существующий код ошибки
+            return res.status(500).send(`
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="UTF-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                    <title>Xatolik</title>
+                    <style>
+                        body {
+                            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                            display: flex;
+                            justify-content: center;
+                            align-items: center;
+                            min-height: 100vh;
+                            margin: 0;
+                            background: #f5f5f5;
+                        }
+                        .error-card {
+                            background: white;
+                            padding: 40px;
+                            border-radius: 20px;
+                            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                            text-align: center;
+                            max-width: 400px;
+                        }
+                        h1 { color: #dc3545; margin-bottom: 16px; }
+                        p { color: #6c757d; }
+                    </style>
+                </head>
+                <body>
+                    <div class="error-card">
+                        <h1>❌ Xatolik</h1>
+                        <p>Server xatosi. Qaytadan urinib ko'ring.</p>
+                    </div>
+                </body>
+                </html>
+            `);
         }
 
         if (!user) {
-            // ... существующий код 404
+            return res.status(404).send(`
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="UTF-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                    <title>Talaba topilmadi</title>
+                    <style>
+                        body {
+                            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                            display: flex;
+                            justify-content: center;
+                            align-items: center;
+                            min-height: 100vh;
+                            margin: 0;
+                            background: #f5f5f5;
+                        }
+                        .error-card {
+                            background: white;
+                            padding: 40px;
+                            border-radius: 20px;
+                            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                            text-align: center;
+                            max-width: 400px;
+                        }
+                        h1 { color: #dc3545; margin-bottom: 16px; }
+                        p { color: #6c757d; }
+                    </style>
+                </head>
+                <body>
+                    <div class="error-card">
+                        <h1>❌ Talaba topilmadi</h1>
+                        <p>Bunday QR kod mavjud emas yoki o'chirilgan.</p>
+                    </div>
+                </body>
+                </html>
+            `);
         }
 
-        // ✅ ИСПРАВЛЕНО: Безопасное получение username
-        const displayUsername = user.username &&
+        // ✅ ИСПРАВЛЕНО: Правильная обработка username
+        let displayUsername = user.telegram_id; // По умолчанию показываем ID
+
+        if (user.username &&
+            user.username !== '' &&
             user.username !== 'null' &&
             user.username !== '[object Object]' &&
-            typeof user.username === 'string'
-            ? user.username
-            : String(user.telegram_id);
+            typeof user.username === 'string') {
+            displayUsername = user.username;
+        }
 
         console.log('👤 Отображение студента:', {
             full_name: user.full_name,
-            username: displayUsername,
+            username: user.username,
+            displayUsername: displayUsername,
             telegram_id: user.telegram_id
         });
 
         // Получаем купленные курсы
         db.db.all(
             `SELECT c.title, c.type, p.created_at, p.amount
-       FROM purchases p
-       INNER JOIN courses c ON p.course_id = c.id
-       WHERE p.user_id = ? AND p.status = 'paid'
-       ORDER BY p.created_at DESC`,
+             FROM purchases p
+             INNER JOIN courses c ON p.course_id = c.id
+             WHERE p.user_id = ? AND p.status = 'paid'
+             ORDER BY p.created_at DESC`,
             [user.id],
             (err, courses) => {
                 if (err) {
@@ -891,72 +967,213 @@ app.get('/student/:token', (req, res) => {
                         const icon = c.type === 'course' ? '📚' : c.type === 'book' ? '📖' : '🎥';
                         const date = new Date(c.created_at);
                         return `
-              <div class="course-item">
-                <span class="course-icon">${icon}</span>
-                <div class="course-info">
-                  <div class="course-title">${c.title}</div>
-                  <div class="course-date">${date.toLocaleDateString('uz-UZ')}</div>
-                </div>
-                <div class="course-amount">${c.amount.toLocaleString()} so'm</div>
-              </div>
-            `;
+                            <div class="course-item">
+                                <span class="course-icon">${icon}</span>
+                                <div class="course-info">
+                                    <div class="course-title">${c.title}</div>
+                                    <div class="course-date">${date.toLocaleDateString('uz-UZ')}</div>
+                                </div>
+                                <div class="course-amount">${c.amount.toLocaleString()} so'm</div>
+                            </div>
+                        `;
                     }).join('')
                     : '<p style="text-align: center; color: #6c757d; padding: 20px;">Hali kurs sotib olinmagan</p>';
 
                 res.send(`
-          <!DOCTYPE html>
-          <html lang="uz">
-          <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>${user.full_name || 'Talaba'} - Najot Nur</title>
-            <!-- ... existing styles ... -->
-          </head>
-          <body>
-            <div class="container">
-              <div class="card">
-                <div class="card-header">
-                  <div class="avatar">${(user.full_name || 'T').charAt(0).toUpperCase()}</div>
-                  <div class="student-name">${user.full_name || 'Foydalanuvchi'}</div>
-                  <div class="student-phone">📱 ${user.phone_number || 'Telefon kiritilmagan'}</div>
-                </div>
+                    <!DOCTYPE html>
+                    <html lang="uz">
+                    <head>
+                        <meta charset="UTF-8">
+                        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                        <title>${user.full_name || 'Talaba'} - Najot Nur</title>
+                        <style>
+                            * {
+                                margin: 0;
+                                padding: 0;
+                                box-sizing: border-box;
+                            }
+                            body {
+                                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+                                background: #f5f5f5;
+                                min-height: 100vh;
+                                padding: 20px;
+                            }
+                            .container {
+                                max-width: 600px;
+                                margin: 0 auto;
+                            }
+                            .card {
+                                background: white;
+                                border-radius: 16px;
+                                box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+                                overflow: hidden;
+                                animation: slideUp 0.4s ease;
+                            }
+                            @keyframes slideUp {
+                                from {
+                                    opacity: 0;
+                                    transform: translateY(20px);
+                                }
+                                to {
+                                    opacity: 1;
+                                    transform: translateY(0);
+                                }
+                            }
+                            .card-header {
+                                background: linear-gradient(135deg, #8b1538 0%, #a91d42 100%);
+                                color: white;
+                                padding: 40px 30px;
+                                text-align: center;
+                            }
+                            .avatar {
+                                width: 100px;
+                                height: 100px;
+                                border-radius: 50%;
+                                background: white;
+                                color: #8b1538;
+                                display: flex;
+                                align-items: center;
+                                justify-content: center;
+                                font-size: 40px;
+                                font-weight: 700;
+                                margin: 0 auto 20px;
+                                border: 4px solid rgba(255,255,255,0.3);
+                            }
+                            .student-name {
+                                font-size: 28px;
+                                font-weight: 700;
+                                margin-bottom: 8px;
+                            }
+                            .student-phone {
+                                font-size: 16px;
+                                opacity: 0.9;
+                            }
+                            .card-body {
+                                padding: 30px;
+                            }
+                            .info-section {
+                                margin-bottom: 30px;
+                            }
+                            .info-section:last-child {
+                                margin-bottom: 0;
+                            }
+                            .section-title {
+                                font-size: 14px;
+                                font-weight: 600;
+                                color: #6c757d;
+                                margin-bottom: 12px;
+                                text-transform: uppercase;
+                                letter-spacing: 0.5px;
+                            }
+                            .info-row {
+                                display: flex;
+                                justify-content: space-between;
+                                padding: 12px 0;
+                                border-bottom: 1px solid #e9ecef;
+                            }
+                            .info-row:last-child {
+                                border-bottom: none;
+                            }
+                            .info-label {
+                                color: #6c757d;
+                                font-size: 14px;
+                            }
+                            .info-value {
+                                font-weight: 600;
+                                color: #212529;
+                            }
+                            .course-item {
+                                display: flex;
+                                align-items: center;
+                                gap: 12px;
+                                padding: 16px;
+                                background: #f8f9fa;
+                                border-radius: 12px;
+                                margin-bottom: 12px;
+                                transition: transform 0.2s;
+                            }
+                            .course-item:hover {
+                                transform: translateX(4px);
+                            }
+                            .course-icon {
+                                font-size: 28px;
+                            }
+                            .course-info {
+                                flex: 1;
+                            }
+                            .course-title {
+                                font-weight: 600;
+                                color: #212529;
+                                margin-bottom: 4px;
+                            }
+                            .course-date {
+                                font-size: 12px;
+                                color: #6c757d;
+                            }
+                            .course-amount {
+                                font-weight: 700;
+                                color: #8b1538;
+                                white-space: nowrap;
+                            }
+                            .footer {
+                                text-align: center;
+                                padding: 20px;
+                                background: #f8f9fa;
+                                color: #6c757d;
+                                font-size: 13px;
+                            }
+                            .logo {
+                                font-weight: 700;
+                                color: #8b1538;
+                                margin-bottom: 4px;
+                            }
+                        </style>
+                    </head>
+                    <body>
+                        <div class="container">
+                            <div class="card">
+                                <div class="card-header">
+                                    <div class="avatar">${(user.full_name || 'T').charAt(0).toUpperCase()}</div>
+                                    <div class="student-name">${user.full_name || 'Foydalanuvchi'}</div>
+                                    <div class="student-phone">📱 ${user.phone_number || 'Telefon kiritilmagan'}</div>
+                                </div>
 
-                <div class="card-body">
-                  <div class="info-section">
-                    <div class="section-title">Ma'lumotlar</div>
-                    <div class="info-row">
-                      <span class="info-label">Telegram</span>
-                      <span class="info-value">@${displayUsername}</span>
-                    </div>
-                    <div class="info-row">
-                      <span class="info-label">Ro'yxatdan o'tgan</span>
-                      <span class="info-value">${new Date(user.created_at).toLocaleDateString('uz-UZ')}</span>
-                    </div>
-                    <div class="info-row">
-                      <span class="info-label">Kurslar soni</span>
-                      <span class="info-value">${user.courses_count || 0} ta</span>
-                    </div>
-                    <div class="info-row">
-                      <span class="info-label">Jami to'lov</span>
-                      <span class="info-value">${(user.total_spent || 0).toLocaleString()} so'm</span>
-                    </div>
-                  </div>
+                                <div class="card-body">
+                                    <div class="info-section">
+                                        <div class="section-title">Ma'lumotlar</div>
+                                        <div class="info-row">
+                                            <span class="info-label">Telegram</span>
+                                            <span class="info-value">@${displayUsername}</span>
+                                        </div>
+                                        <div class="info-row">
+                                            <span class="info-label">Ro'yxatdan o'tgan</span>
+                                            <span class="info-value">${new Date(user.created_at).toLocaleDateString('uz-UZ')}</span>
+                                        </div>
+                                        <div class="info-row">
+                                            <span class="info-label">Kurslar soni</span>
+                                            <span class="info-value">${user.courses_count || 0} ta</span>
+                                        </div>
+                                        <div class="info-row">
+                                            <span class="info-label">Jami to'lov</span>
+                                            <span class="info-value">${(user.total_spent || 0).toLocaleString()} so'm</span>
+                                        </div>
+                                    </div>
 
-                  <div class="info-section">
-                    <div class="section-title">Sotib olingan kurslar</div>
-                    ${coursesHTML}
-                  </div>
-                </div>
+                                    <div class="info-section">
+                                        <div class="section-title">Sotib olingan kurslar</div>
+                                        ${coursesHTML}
+                                    </div>
+                                </div>
 
-                <div class="footer">
-                  <div class="logo">Najot Nur</div>
-                  <div>Ta'lim platformasi</div>
-                </div>
-              </div>
-            </div>
-          </body>
-          </html>
-        `);
+                                <div class="footer">
+                                    <div class="logo">Najot Nur</div>
+                                    <div>Ta'lim platformasi</div>
+                                </div>
+                            </div>
+                        </div>
+                    </body>
+                    </html>
+                `);
             }
         );
     });

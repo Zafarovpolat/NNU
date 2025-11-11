@@ -293,7 +293,15 @@ const dbHelpers = {
        LEFT JOIN purchases p ON u.id = p.user_id
        GROUP BY u.id
        ORDER BY u.created_at DESC`,
-            callback
+            (err, users) => {
+                if (!err && users) {
+                    console.log('📊 getAllUsers результат:');
+                    users.forEach(u => {
+                        console.log(`  ID: ${u.id}, username: "${u.username}", telegram: ${u.telegram_id}`);
+                    });
+                }
+                callback(err, users);
+            }
         );
     },
 

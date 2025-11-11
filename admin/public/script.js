@@ -1034,9 +1034,17 @@ function displayUsers(users) {
 
   users.forEach((u) => {
     // ✅ ИСПРАВЛЕНО: Безопасная обработка username
-    const displayUsername = u.username && u.username !== 'null' && u.username !== '[object Object]'
-      ? '@' + u.username
-      : '-';
+    let displayUsername = '-';
+
+    if (u.username &&
+      u.username !== '' &&
+      u.username !== 'null' &&
+      u.username !== '[object Object]' &&
+      typeof u.username === 'string') {
+      displayUsername = '@' + u.username;
+    }
+
+    console.log('👤 User:', u.id, 'username:', u.username, 'display:', displayUsername);
 
     const row = `
       <tr>
