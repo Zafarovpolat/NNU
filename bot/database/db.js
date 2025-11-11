@@ -237,59 +237,38 @@ const dbHelpers = {
 
     // === ПОЛЬЗОВАТЕЛИ ===
     createUser: (telegramId, username, fullName, callback) => {
-        // ✅ Принудительно приводим к строке и очищаем
-        const cleanUsername = username && typeof username === 'string'
-            ? username.trim()
-            : '';
+        const cleanTelegramId = parseInt(telegramId);
+        const cleanUsername = username && typeof username === 'string' ? username.trim() : '';
+        const cleanFullName = fullName && typeof fullName === 'string' ? fullName.trim() : '';
 
         console.log('🔍 createUser вызван:');
-        console.log('   telegramId:', telegramId);
-        console.log('   username (raw):', username);
-        console.log('   username (type):', typeof username);
-        console.log('   cleanUsername:', cleanUsername);
-        console.log('   fullName:', fullName);
+        console.log('   telegramId:', cleanTelegramId);
+        console.log('   username:', cleanUsername);
+        console.log('   fullName:', cleanFullName);
 
         db.run(
             'INSERT OR IGNORE INTO users (telegram_id, username, full_name) VALUES (?, ?, ?)',
-            [telegramId, cleanUsername, fullName],
+            [cleanTelegramId, cleanUsername, cleanFullName],
             function (err) {
                 if (err) {
-                    console.error('❌ Ошибка SQL при создании пользователя:', err);
-                } else {
-                    console.log('✅ Пользователь создан/обновлен. Changes:', this.changes, 'LastID:', this.lastID);
-
-                    // Проверяем что реально сохранилось
-                    db.get(
-                        'SELECT * FROM users WHERE telegram_id = ?',
-                        [telegramId],
-                        (err, user) => {
-                            if (user) {
-                                console.log('✅ Проверка БД после вставки:');
-                                console.log('   username в БД:', user.username);
-                                console.log('   full_name в БД:', user.full_name);
-                            }
-                        }
-                    );
+                    console.error('❌ Ошибка SQL:', err);
+                    if (callback) callback(err);
+                    return;
                 }
-                callback.call(this, err);
+
+                console.log('✅ Пользователь создан. Changes:', this.changes);
+
+                if (callback) callback.call(this, null);
             }
         );
     },
 
     getUserByTelegramId: (telegramId, callback) => {
-        db.get(
-            'SELECT * FROM users WHERE telegram_id = ?',
-            [telegramId],
-            callback
-        );
+        db.get('SELECT * FROM users WHERE telegram_id = ?', [telegramId], callback);
     },
 
     getUser: (telegramId, callback) => {
-        db.get(
-            'SELECT * FROM users WHERE telegram_id = ?',
-            [telegramId],
-            callback
-        );
+        db.get('SELECT * FROM users WHERE telegram_id = ?', [telegramId], callback);
     },
 
     updateUserState: (telegramId, state, callback) => {
@@ -327,10 +306,7 @@ const dbHelpers = {
        ORDER BY u.created_at DESC`,
             (err, users) => {
                 if (!err && users) {
-                    console.log('📊 getAllUsers результат:');
-                    users.forEach(u => {
-                        console.log(`  ID: ${u.id}, username: "${u.username}", telegram: ${u.telegram_id}`);
-                    });
+                    console.log('📊 getAllUsers результат:', users.length, 'пользователей');
                 }
                 callback(err, users);
             }
