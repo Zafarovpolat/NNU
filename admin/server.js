@@ -7,7 +7,15 @@ const multer = require('multer');
 const fs = require('fs');
 const config = require('../config');
 const db = require('../bot/database/db');
+const { initGoogleSheets, logQRScan } = require('./utils/googleSheets');
 
+(async () => {
+    try {
+        await initGoogleSheets();
+    } catch (error) {
+        console.error('Ошибка инициализации Google Sheets:', error);
+    }
+})();
 const app = express();
 
 app.use(cors());
@@ -623,29 +631,45 @@ const uploadBroadcast = multer({
 app.get('/api/broadcast/stats', authenticateToken, (req, res) => {
     console.log('📊 Запрос статистики рассылки');
 
+    // ✅ ИСПРАВЛЕНО: Используем COALESCE для безопасного подсчета
     db.db.get('SELECT COUNT(*) as total FROM users', (err, total) => {
         if (err) {
-            console.error('Ошибка получения статистики:', err);
+            console.error('Ошибка получения общей статистики:', err);
             return res.status(500).json({ error: err.message });
         }
 
+        // ✅ ИСПРАВЛЕНО: Безопасный подсчет с учетом возможного отсутствия колонки
         db.db.get(
-            'SELECT COUNT(*) as enabled FROM users WHERE notifications_enabled = 1',
-            (err, enabled) => {
+            `SELECT COUNT(*) as regular 
+             FROM users 
+             WHERE COALESCE(user_type, 'regular') = 'regular'`,
+            (err, regular) => {
                 if (err) {
-                    console.error('Ошибка получения статистики:', err);
+                    console.error('Ошибка получения regular:', err);
                     return res.status(500).json({ error: err.message });
                 }
 
-                res.json({
-                    totalUsers: total ? total.total : 0,
-                    notificationsEnabled: enabled ? enabled.enabled : 0
-                });
+                db.db.get(
+                    `SELECT COUNT(*) as completed 
+                     FROM users 
+                     WHERE COALESCE(user_type, 'regular') = 'completed'`,
+                    (err, completed) => {
+                        if (err) {
+                            console.error('Ошибка получения completed:', err);
+                            return res.status(500).json({ error: err.message });
+                        }
+
+                        res.json({
+                            totalUsers: total ? total.total : 0,
+                            regularUsers: regular ? regular.regular : 0,
+                            completedUsers: completed ? completed.completed : 0
+                        });
+                    }
+                );
             }
         );
     });
 });
-
 // Тестовая рассылка (первому пользователю)
 app.post('/api/broadcast/test', authenticateToken, uploadBroadcast.single('photo'), async (req, res) => {
     try {
@@ -732,12 +756,18 @@ app.post('/api/broadcast/test', authenticateToken, uploadBroadcast.single('photo
 // Массовая рассылка
 app.post('/api/broadcast/send', authenticateToken, uploadBroadcast.single('photo'), async (req, res) => {
     try {
-        console.log('📢 Массовая рассылка');
-        console.log('   Type:', req.body.type);
-        console.log('   Message:', req.body.message);
-        console.log('   File:', req.file ? req.file.filename : 'нет');
 
         const { message, type } = req.body;
+        const audience = req.body.audience || 'all'; // ✅ ИСПРАВЛЕНО: значение по умолчанию
+
+        console.log('📢 Массовая рассылка');
+        console.log('   req.body:', req.body); // ✅ Для отладки
+        console.log('   Type:', req.body.type);
+        console.log('   Audience:', req.body.audience); // all, regular, completed
+        console.log('   Message:', req.body.message);
+        console.log('   File:', req.file ? req.file.filename : 'нет');
+        console.log('   Audience:', audience); // ✅ Проверяем
+
         const bot = global.telegramBot;
 
         if (!bot) {
@@ -747,8 +777,17 @@ app.post('/api/broadcast/send', authenticateToken, uploadBroadcast.single('photo
             return res.status(500).json({ error: 'Бот не доступен. Запустите бота.' });
         }
 
-        // Получаем всех пользователей
-        db.db.all('SELECT telegram_id, full_name FROM users', async (err, users) => {
+        // ✅ Получаем пользователей по фильтру
+        let query = 'SELECT telegram_id, full_name FROM users';
+
+        if (audience === 'regular') {
+            query += ' WHERE user_type = "regular"';
+        } else if (audience === 'completed') {
+            query += ' WHERE user_type = "completed"';
+        }
+        // Если audience === 'all', то берем всех
+
+        db.db.all(query, async (err, users) => {
             if (err) {
                 console.error('Ошибка получения пользователей:', err);
 
@@ -773,7 +812,7 @@ app.post('/api/broadcast/send', authenticateToken, uploadBroadcast.single('photo
                 });
             }
 
-            console.log(`📢 Начало рассылки для ${users.length} пользователей`);
+            console.log(`📢 Начало рассылки для ${users.length} пользователей (${audience})`);
 
             // Отправляем ответ сразу
             res.json({ success: true, total: users.length });
@@ -799,7 +838,6 @@ app.post('/api/broadcast/send', authenticateToken, uploadBroadcast.single('photo
                     sent++;
                     console.log(`✅ Отправлено: ${user.full_name} (${user.telegram_id})`);
 
-                    // Задержка чтобы не превысить лимит Telegram (30 сообщений в секунду)
                     await new Promise(resolve => setTimeout(resolve, 50));
                 } catch (error) {
                     failed++;
@@ -930,6 +968,21 @@ app.get('/student/:token', (req, res) => {
             `);
         }
 
+        // ✅ НОВОЕ: Логируем сканирование в БД
+        db.logQRScan(
+            user.telegram_id,
+            req.ip,
+            req.get('User-Agent'),
+            (err) => {
+                if (err) console.error('Ошибка логирования сканирования:', err);
+            }
+        );
+
+        // ✅ НОВОЕ: Записываем в Google Sheets
+        // ✅ ИСПРАВЛЕНО: Записываем в Google Sheets (без await в callback)
+        logQRScan(user, new Date()).catch(err => {
+            console.error('Ошибка записи в Sheets:', err);
+        });
         // ✅ ИСПРАВЛЕНО: Правильная обработка username
         let displayUsername = user.telegram_id; // По умолчанию показываем ID
 
@@ -1176,6 +1229,97 @@ app.get('/student/:token', (req, res) => {
                 `);
             }
         );
+    });
+});
+
+// === ЗАВЕРШЕНИЕ ОБУЧЕНИЯ ===
+
+app.get('/api/completion-requests', authenticateToken, (req, res) => {
+    const { status } = req.query;
+
+    db.getCompletionRequests(status, (err, requests) => {
+        if (err) {
+            console.error('Ошибка получения заявок:', err);
+            return res.status(500).json({ error: err.message });
+        }
+
+        res.json(requests || []);
+    });
+});
+
+app.post('/api/completion-requests/:id/approve', authenticateToken, async (req, res) => {
+    const { id } = req.params;
+
+    db.approveCompletionRequest(id, req.admin.id, (err) => {
+        if (err) {
+            console.error('Ошибка одобрения:', err);
+            return res.status(500).json({ error: err.message });
+        }
+
+        // Уведомляем пользователя
+        db.db.get(
+            `SELECT cr.*, u.telegram_id, u.full_name, c.title as course_title
+             FROM completion_requests cr
+             INNER JOIN users u ON cr.user_id = u.id
+             INNER JOIN courses c ON cr.course_id = c.id
+             WHERE cr.id = ?`,
+            [id],
+            async (err, request) => {
+                if (request && global.telegramBot) {
+                    try {
+                        await global.telegramBot.sendMessage(
+                            request.telegram_id,
+                            `🎉 <b>Tabriklaymiz!</b>\n\n` +
+                            `✅ "${request.course_title}" kursi tugallanganligi tasdiqlandi!\n\n` +
+                            `📜 Sertifikatingizni olish uchun qo'llab-quvvatlash xizmatiga murojaat qiling.`,
+                            { parse_mode: 'HTML' }
+                        );
+                    } catch (e) {
+                        console.error('Ошибка отправки уведомления:', e);
+                    }
+                }
+            }
+        );
+
+        res.json({ success: true });
+    });
+});
+
+app.post('/api/completion-requests/:id/reject', authenticateToken, async (req, res) => {
+    const { id } = req.params;
+
+    db.rejectCompletionRequest(id, req.admin.id, (err) => {
+        if (err) {
+            console.error('Ошибка отклонения:', err);
+            return res.status(500).json({ error: err.message });
+        }
+
+        // Уведомляем пользователя
+        db.db.get(
+            `SELECT cr.*, u.telegram_id, c.title as course_title
+             FROM completion_requests cr
+             INNER JOIN users u ON cr.user_id = u.id
+             INNER JOIN courses c ON cr.course_id = c.id
+             WHERE cr.id = ?`,
+            [id],
+            async (err, request) => {
+                if (request && global.telegramBot) {
+                    try {
+                        await global.telegramBot.sendMessage(
+                            request.telegram_id,
+                            `❌ <b>So'rovingiz rad etildi</b>\n\n` +
+                            `📚 Kurs: "${request.course_title}"\n\n` +
+                            `Iltimos, kursni to'liq yakunlang va qaytadan so'rov yuboring.`,
+                            { parse_mode: 'HTML' }
+                        );
+                    } catch (e) {
+                        console.error('Ошибка отправки уведомления:', e);
+                    }
+                }
+            }
+        );
+
+        res.json({ success: true });
     });
 });
 

@@ -12,82 +12,78 @@ function generateUUID() {
 
 const db = new sqlite3.Database(config.DB_PATH);
 
-// Хеширование пароля
 function hashPassword(password) {
     return crypto.createHash('sha256').update(password).digest('hex');
 }
 
-// Инициализация таблиц
+// ✅ ИСПРАВЛЕНО: ВСЁ внутри db.serialize() в правильном порядке
 db.serialize(() => {
-    // Пользователи
-    db.run(`
-    CREATE TABLE IF NOT EXISTS users (
-      id INTEGER PRIMARY KEY,
-      telegram_id INTEGER UNIQUE,
-      full_name TEXT,
-      username TEXT,
-      phone_number TEXT,
-      qr_code_token TEXT UNIQUE,
-      qr_generated INTEGER DEFAULT 0,
-      state TEXT DEFAULT 'start',
-      notifications_enabled INTEGER DEFAULT 1,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
+    console.log('📦 Инициализация базы данных...');
 
-    // Миграция: добавление новых полей если их нет
+    // 1. Создаем таблицу users ОДИН РАЗ
+    db.run(`
+      CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY,
+        telegram_id INTEGER UNIQUE,
+        full_name TEXT,
+        username TEXT,
+        phone_number TEXT,
+        user_type TEXT DEFAULT 'regular',
+        qr_code_token TEXT UNIQUE,
+        qr_generated INTEGER DEFAULT 0,
+        state TEXT DEFAULT 'start',
+        notifications_enabled INTEGER DEFAULT 1,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `, (err) => {
+        if (err) {
+            console.error('❌ Ошибка создания таблицы users:', err);
+        } else {
+            console.log('✅ Таблица users готова');
+        }
+    });
+
+    // 2. Проверяем существующие колонки
     db.all("PRAGMA table_info(users)", (err, columns) => {
         if (err) {
-            console.error('Ошибка получения структуры таблицы:', err);
+            console.error('❌ Ошибка PRAGMA:', err);
             return;
         }
 
         const columnNames = columns.map(c => c.name);
+        console.log('📋 Колонки users:', columnNames.join(', '));
 
-        // 1. Добавляем phone_number
+        // Добавляем недостающие колонки
+        if (!columnNames.includes('user_type')) {
+            db.run('ALTER TABLE users ADD COLUMN user_type TEXT DEFAULT "regular"', (err) => {
+                if (err) console.error('❌ user_type:', err.message);
+                else console.log('✅ Добавлена колонка user_type');
+            });
+        }
+
         if (!columnNames.includes('phone_number')) {
             db.run('ALTER TABLE users ADD COLUMN phone_number TEXT', (err) => {
-                if (err && !err.message.includes('duplicate')) {
-                    console.error('Ошибка добавления phone_number:', err);
-                } else {
-                    console.log('✅ Добавлено поле phone_number');
-                }
+                if (err) console.error('❌ phone_number:', err.message);
+                else console.log('✅ Добавлена колонка phone_number');
             });
         }
 
-        // 2. Добавляем qr_code_token БЕЗ UNIQUE (SQLite ограничение)
         if (!columnNames.includes('qr_code_token')) {
             db.run('ALTER TABLE users ADD COLUMN qr_code_token TEXT', (err) => {
-                if (err && !err.message.includes('duplicate')) {
-                    console.error('Ошибка добавления qr_code_token:', err);
-                } else {
-                    console.log('✅ Добавлено поле qr_code_token');
-
-                    // Создаем уникальный индекс вместо UNIQUE constraint
-                    db.run('CREATE UNIQUE INDEX IF NOT EXISTS idx_qr_token ON users(qr_code_token)', (err) => {
-                        if (err) {
-                            console.error('Ошибка создания индекса:', err);
-                        } else {
-                            console.log('✅ Создан уникальный индекс для qr_code_token');
-                        }
-                    });
-                }
+                if (err) console.error('❌ qr_code_token:', err.message);
+                else console.log('✅ Добавлена колонка qr_code_token');
             });
         }
 
-        // 3. Добавляем qr_generated
         if (!columnNames.includes('qr_generated')) {
             db.run('ALTER TABLE users ADD COLUMN qr_generated INTEGER DEFAULT 0', (err) => {
-                if (err && !err.message.includes('duplicate')) {
-                    console.error('Ошибка добавления qr_generated:', err);
-                } else {
-                    console.log('✅ Добавлено поле qr_generated');
-                }
+                if (err) console.error('❌ qr_generated:', err.message);
+                else console.log('✅ Добавлена колонка qr_generated');
             });
         }
     });
 
-    // Админы
+    // 3. Админы
     db.run(`
     CREATE TABLE IF NOT EXISTS admins (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -101,26 +97,26 @@ db.serialize(() => {
     )
   `);
 
-    // Курсы
+    // 4. Курсы
     db.run(`
     CREATE TABLE IF NOT EXISTS courses (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       title TEXT,
       description TEXT,
-      type TEXT, -- 'course', 'book', 'video'
+      type TEXT,
       lessons_count INTEGER,
       duration TEXT,
       price_full REAL,
       price_monthly REAL,
       price_single REAL,
-      file_url TEXT, -- для книг и одноразовых видео
+      file_url TEXT,
       cover_image TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
 
-    // Уроки/Контент
+    // 5. Уроки
     db.run(`
     CREATE TABLE IF NOT EXISTS lessons (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -133,7 +129,7 @@ db.serialize(() => {
     )
   `);
 
-    // Покупки
+    // 6. Покупки
     db.run(`
     CREATE TABLE IF NOT EXISTS purchases (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -142,8 +138,8 @@ db.serialize(() => {
       payment_type TEXT,
       amount REAL,
       status TEXT DEFAULT 'pending',
-      payment_proof TEXT, -- путь к файлу чека
-      payment_proof_type TEXT, -- photo, document, link
+      payment_proof TEXT,
+      payment_proof_type TEXT,
       expires_at DATETIME,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -152,10 +148,39 @@ db.serialize(() => {
     )
   `);
 
-    // Создаем суперадмина если его нет
+    // 7. Заявки на завершение
+    db.run(`
+    CREATE TABLE IF NOT EXISTS completion_requests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER,
+      course_id INTEGER,
+      status TEXT DEFAULT 'pending',
+      comment TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      reviewed_at DATETIME,
+      reviewed_by INTEGER,
+      FOREIGN KEY (user_id) REFERENCES users(id),
+      FOREIGN KEY (course_id) REFERENCES courses(id),
+      FOREIGN KEY (reviewed_by) REFERENCES admins(id)
+    )
+  `);
+
+    // 8. QR сканирования
+    db.run(`
+    CREATE TABLE IF NOT EXISTS qr_scans (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER,
+      scanned_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      ip_address TEXT,
+      user_agent TEXT,
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    )
+  `);
+
+    // 9. Создаем суперадмина
     db.get("SELECT COUNT(*) as count FROM admins", (err, row) => {
         if (row && row.count === 0) {
-            const defaultPassword = 'admin123'; // ИЗМЕНИТЕ ЭТО!
+            const defaultPassword = 'admin123';
             db.run(
                 'INSERT INTO admins (username, password_hash, full_name) VALUES (?, ?, ?)',
                 ['admin', hashPassword(defaultPassword), 'Super Admin'],
@@ -163,13 +188,13 @@ db.serialize(() => {
                     console.log('✅ Создан суперадмин:');
                     console.log('   Username: admin');
                     console.log('   Password:', defaultPassword);
-                    console.log('   ⚠️  ИЗМЕНИТЕ ПАРОЛЬ ПОСЛЕ ПЕРВОГО ВХОДА!');
+                    console.log('   ⚠️  ИЗМЕНИТЕ ПАРОЛЬ!');
                 }
             );
         }
     });
 
-    // Тестовые данные для курсов
+    // 10. Тестовые курсы
     db.get("SELECT COUNT(*) as count FROM courses", (err, row) => {
         if (row && row.count === 0) {
             const stmt = db.prepare(`
@@ -189,7 +214,6 @@ db.serialize(() => {
 
 // Helper функции
 const dbHelpers = {
-    // === АДМИНЫ ===
     createAdmin: (username, password, fullName, createdBy, callback) => {
         db.run(
             'INSERT INTO admins (username, password_hash, full_name, created_by) VALUES (?, ?, ?, ?)',
@@ -235,31 +259,67 @@ const dbHelpers = {
         );
     },
 
-    // === ПОЛЬЗОВАТЕЛИ ===
     createUser: (telegramId, username, fullName, callback) => {
         const cleanTelegramId = parseInt(telegramId);
         const cleanUsername = username && typeof username === 'string' ? username.trim() : '';
         const cleanFullName = fullName && typeof fullName === 'string' ? fullName.trim() : '';
 
-        console.log('🔍 createUser вызван:');
+        console.log('🔍 createUser:');
         console.log('   telegramId:', cleanTelegramId);
         console.log('   username:', cleanUsername);
         console.log('   fullName:', cleanFullName);
 
-        db.run(
-            'INSERT OR IGNORE INTO users (telegram_id, username, full_name) VALUES (?, ?, ?)',
-            [cleanTelegramId, cleanUsername, cleanFullName],
-            function (err) {
-                if (err) {
-                    console.error('❌ Ошибка SQL:', err);
-                    if (callback) callback(err);
-                    return;
-                }
-
-                console.log('✅ Пользователь создан. Changes:', this.changes);
-
-                if (callback) callback.call(this, null);
+        // ✅ ИСПРАВЛЕНО: Сначала проверяем, существует ли пользователь
+        db.get('SELECT id FROM users WHERE telegram_id = ?', [cleanTelegramId], (err, existing) => {
+            if (err) {
+                console.error('❌ Ошибка проверки пользователя:', err);
+                if (callback) callback(err);
+                return;
             }
+
+            if (existing) {
+                // ✅ Если существует - обновляем данные
+                console.log('🔄 Пользователь существует, обновляем...');
+                db.run(
+                    'UPDATE users SET username = ?, full_name = ? WHERE telegram_id = ?',
+                    [cleanUsername, cleanFullName, cleanTelegramId],
+                    function (err) {
+                        if (err) {
+                            console.error('❌ Ошибка обновления:', err);
+                            if (callback) callback(err);
+                            return;
+                        }
+
+                        console.log('✅ Пользователь обновлен. Changes:', this.changes);
+                        if (callback) callback.call(this, null);
+                    }
+                );
+            } else {
+                // ✅ Если не существует - создаем
+                console.log('➕ Создаем нового пользователя...');
+                db.run(
+                    'INSERT INTO users (telegram_id, username, full_name) VALUES (?, ?, ?)',
+                    [cleanTelegramId, cleanUsername, cleanFullName],
+                    function (err) {
+                        if (err) {
+                            console.error('❌ Ошибка создания:', err);
+                            if (callback) callback(err);
+                            return;
+                        }
+
+                        console.log('✅ Пользователь создан. ID:', this.lastID);
+                        if (callback) callback.call(this, null);
+                    }
+                );
+            }
+        });
+    },
+
+    updateUserType: (telegramId, userType, callback) => {
+        db.run(
+            'UPDATE users SET user_type = ? WHERE telegram_id = ?',
+            [userType, telegramId],
+            callback
         );
     },
 
@@ -306,16 +366,14 @@ const dbHelpers = {
        ORDER BY u.created_at DESC`,
             (err, users) => {
                 if (!err && users) {
-                    console.log('📊 getAllUsers результат:', users.length, 'пользователей');
+                    console.log('📊 getAllUsers:', users.length, 'пользователей');
                 }
                 callback(err, users);
             }
         );
     },
 
-    // === QR-КОДЫ ===
     generateQRToken: (telegramId, callback) => {
-        // ✅ Используем нашу функцию вместо uuid
         const token = generateUUID();
 
         db.run(
@@ -343,7 +401,6 @@ const dbHelpers = {
         );
     },
 
-    // === КУРСЫ ===
     getAllCourses: (type, callback) => {
         if (type) {
             db.all('SELECT * FROM courses WHERE type = ? ORDER BY created_at DESC', [type], callback);
@@ -383,7 +440,6 @@ const dbHelpers = {
         db.run('DELETE FROM courses WHERE id = ?', [id], callback);
     },
 
-    // === УРОКИ ===
     getLessonsByCourse: (courseId, callback) => {
         db.all(
             'SELECT * FROM lessons WHERE course_id = ? ORDER BY order_num',
@@ -412,7 +468,6 @@ const dbHelpers = {
         db.run('DELETE FROM lessons WHERE id = ?', [id], callback);
     },
 
-    // === ПОКУПКИ ===
     createPurchase: (userId, courseId, paymentType, amount, callback) => {
         const expiresAt = paymentType === 'monthly'
             ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
@@ -491,7 +546,68 @@ const dbHelpers = {
             [purchaseId],
             callback
         );
-    }
+    },
+
+    createCompletionRequest: (userId, courseId, comment, callback) => {
+        db.run(
+            `INSERT INTO completion_requests (user_id, course_id, comment) 
+         VALUES ((SELECT id FROM users WHERE telegram_id = ?), ?, ?)`,
+            [userId, courseId, comment],
+            callback
+        );
+    },
+
+    getCompletionRequests: (status, callback) => {
+        const query = status
+            ? `SELECT cr.*, u.full_name, u.telegram_id, c.title as course_title
+           FROM completion_requests cr
+           INNER JOIN users u ON cr.user_id = u.id
+           INNER JOIN courses c ON cr.course_id = c.id
+           WHERE cr.status = ?
+           ORDER BY cr.created_at DESC`
+            : `SELECT cr.*, u.full_name, u.telegram_id, c.title as course_title
+           FROM completion_requests cr
+           INNER JOIN users u ON cr.user_id = u.id
+           INNER JOIN courses c ON cr.course_id = c.id
+           ORDER BY cr.created_at DESC`;
+
+        const params = status ? [status] : [];
+        db.all(query, params, callback);
+    },
+
+    approveCompletionRequest: (requestId, adminId, callback) => {
+        db.run(
+            `UPDATE completion_requests 
+         SET status = 'approved', reviewed_at = CURRENT_TIMESTAMP, reviewed_by = ?
+         WHERE id = ?`,
+            [adminId, requestId],
+            callback
+        );
+    },
+
+    rejectCompletionRequest: (requestId, adminId, callback) => {
+        db.run(
+            `UPDATE completion_requests 
+         SET status = 'rejected', reviewed_at = CURRENT_TIMESTAMP, reviewed_by = ?
+         WHERE id = ?`,
+            [adminId, requestId],
+            callback
+        );
+    },
+
+    logQRScan: (userId, ipAddress, userAgent, callback) => {
+        db.run(
+            `INSERT INTO qr_scans (user_id, ip_address, user_agent)
+         VALUES ((SELECT id FROM users WHERE telegram_id = ?), ?, ?)`,
+            [userId, ipAddress, userAgent],
+            callback
+        );
+    },
 };
 
-module.exports = { db, hashPassword, ...dbHelpers };
+module.exports = {
+    db,
+    hashPassword,
+    ...dbHelpers,
+    updateUserType: dbHelpers.updateUserType
+};

@@ -135,6 +135,7 @@ function switchTab(tabName) {
   if (tabName === 'admins') loadAdmins();
   if (tabName === 'broadcast') loadBroadcastStats();
   if (tabName === 'profile') loadProfile();
+  if (tabName === 'completions') loadCompletions();
 
   if (window.innerWidth <= 768) {
     document.querySelector('.sidebar').classList.remove('active');
@@ -160,27 +161,26 @@ function showToast(message, type = 'info') {
 // Форматирование даты
 function formatDate(dateString) {
   const date = new Date(dateString);
-  const now = new Date();
-  const diff = now - date;
-  const minutes = Math.floor(diff / 60000);
-  const hours = Math.floor(diff / 3600000);
-  const days = Math.floor(diff / 86400000);
 
-  if (minutes < 60) {
-    return `${minutes} daqiqa oldin`;
-  } else if (hours < 24) {
-    return `${hours} soat oldin`;
-  } else if (days < 7) {
-    return `${days} kun oldin`;
-  } else {
-    return date.toLocaleDateString('uz-UZ', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  }
+  // ✅ ИСПРАВЛЕНО: Всегда показываем полную дату
+  return date.toLocaleDateString('ru-RU', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric'
+  });
+}
+
+// ✅ НОВАЯ функция для покупок (с временем)
+function formatDateTime(dateString) {
+  const date = new Date(dateString);
+
+  return date.toLocaleString('ru-RU', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
 }
 
 // ========================================
@@ -1061,7 +1061,7 @@ function displayUsers(users) {
           </span>
         </td>
         <td><strong style="color: var(--primary);">${(u.total_spent || 0).toLocaleString()}</strong> <span style="font-size: 12px; color: #6c757d;">so'm</span></td>
-        <td style="font-size: 13px; color: #6c757d;">${formatDate(u.created_at)}</td>
+        <td style="font-size: 13px; color: #6c757d;">${formatDateTime(u.created_at)}</td>
       </tr>
     `;
 
@@ -1307,20 +1307,26 @@ document.getElementById('profilePasswordForm')?.addEventListener('submit', async
 
 async function loadBroadcastStats() {
   try {
-    const response = await fetch('/api/broadcast/stats');
+    const response = await fetch('/api/broadcast/stats', {
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+      }
+    });
 
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
+
+    if (response.ok) {
+      document.getElementById('broadcastUsersCount').textContent = data.totalUsers || 0;
+      document.getElementById('broadcastRegularCount').textContent = data.regularUsers || 0;
+      document.getElementById('broadcastCompletedCount').textContent = data.completedUsers || 0;
+
+      // Для счетчиков в радио-кнопках
+      document.getElementById('allCount').textContent = data.totalUsers || 0;
+      document.getElementById('regularCount').textContent = data.regularUsers || 0;
+      document.getElementById('completedCount').textContent = data.completedUsers || 0;
     }
-
-    const stats = await response.json();
-
-    document.getElementById('broadcastUsersCount').textContent = stats.totalUsers || 0;
-    document.getElementById('broadcastNotifCount').textContent = stats.notificationsEnabled || 0;
   } catch (error) {
-    console.error('Ошибка загрузки статистики рассылки:', error);
-    document.getElementById('broadcastUsersCount').textContent = '0';
-    document.getElementById('broadcastNotifCount').textContent = '0';
+    console.error('Broadcast stats error:', error);
   }
 }
 
@@ -1525,6 +1531,13 @@ function initBroadcastForm() {
       formData.append('message', message);
       formData.append('type', type);
 
+      // ✅ ПРАВИЛЬНО: получаем выбранный radio и его значение
+      const audienceInput = document.querySelector('input[name="broadcastAudience"]:checked');
+      const audience = audienceInput ? audienceInput.value : 'all';
+      formData.append('audience', audience); // ✅ Добавляем в FormData
+
+      console.log('   Audience:', audience); // ✅ Для отладки
+
       if (type === 'photo' && photoInput.files[0]) {
         formData.append('photo', photoInput.files[0]);
         console.log('✅ Файл добавлен в FormData');
@@ -1578,6 +1591,149 @@ function initBroadcastForm() {
 
   broadcastFormInitialized = true;
   console.log('✅ Broadcast форма инициализирована');
+}
+
+// === ЗАВЕРШЕНИЕ ОБУЧЕНИЯ ===
+
+let allCompletions = [];
+
+async function loadCompletions() {
+  try {
+    const response = await fetch('/api/completion-requests');
+    allCompletions = await response.json();
+
+    displayCompletions(allCompletions);
+
+    // Обновляем badge
+    const pending = allCompletions.filter(c => c.status === 'pending').length;
+    const badge = document.getElementById('completionsBadge');
+    if (badge) {
+      badge.textContent = pending;
+      badge.style.display = pending > 0 ? 'inline-block' : 'none';
+    }
+  } catch (error) {
+    console.error('Ошибка загрузки заявок:', error);
+  }
+}
+
+function displayCompletions(completions) {
+  const tbody = document.getElementById('completionsTableBody');
+  tbody.innerHTML = '';
+
+  if (completions.length === 0) {
+    tbody.innerHTML = `
+            <tr>
+                <td colspan="6" class="loading-row">
+                    <p style="padding: 40px; text-align: center; color: #6c757d;">
+                        So'rovlar yo'q
+                    </p>
+                </td>
+            </tr>
+        `;
+    return;
+  }
+
+  completions.forEach(c => {
+    let statusBadge = '';
+    let actionButtons = '';
+
+    switch (c.status) {
+      case 'pending':
+        statusBadge = '<span class="badge badge-waiting">⏳ Kutilmoqda</span>';
+        actionButtons = `
+                    <div class="action-buttons">
+                        <button class="btn-success" onclick="approveCompletion(${c.id})">
+                            ✅ Tasdiqlash
+                        </button>
+                        <button class="btn-danger" onclick="rejectCompletion(${c.id})">
+                            ❌ Rad etish
+                        </button>
+                    </div>
+                `;
+        break;
+      case 'approved':
+        statusBadge = '<span class="badge badge-paid">✅ Tasdiqlangan</span>';
+        actionButtons = '-';
+        break;
+      case 'rejected':
+        statusBadge = '<span class="badge badge-rejected">❌ Rad etilgan</span>';
+        actionButtons = '-';
+        break;
+    }
+
+    const row = `
+            <tr>
+                <td><strong>${c.id}</strong></td>
+                <td>
+                    <div style="font-weight: 600;">${c.full_name}</div>
+                    <div style="font-size: 12px; color: #6c757d;">@${c.telegram_id}</div>
+                </td>
+                <td>${c.course_title}</td>
+                <td style="font-size: 13px;">${formatDate(c.created_at)}</td>
+                <td>${statusBadge}</td>
+                <td>${actionButtons}</td>
+            </tr>
+        `;
+
+    tbody.innerHTML += row;
+  });
+}
+
+function filterCompletions() {
+  const status = document.getElementById('completionStatusFilter').value;
+
+  if (status === '') {
+    displayCompletions(allCompletions);
+  } else {
+    const filtered = allCompletions.filter(c => c.status === status);
+    displayCompletions(filtered);
+  }
+}
+
+async function approveCompletion(id) {
+  if (!confirm('Tugallanishni tasdiqlaysizmi?')) return;
+
+  try {
+    const response = await fetch(`/api/completion-requests/${id}/approve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+
+    const result = await response.json();
+
+    if (result.success) {
+      showToast('✅ Tasdiqlandi!', 'success');
+      loadCompletions();
+    } else {
+      showToast('❌ Xatolik', 'error');
+    }
+  } catch (error) {
+    console.error('Ошибка одобрения:', error);
+    showToast('❌ Xatolik yuz berdi', 'error');
+  }
+}
+
+async function rejectCompletion(id) {
+  if (!confirm('Rad etmoqchimisiz?')) return;
+
+  try {
+    const response = await fetch(`/api/completion-requests/${id}/reject`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+
+    const result = await response.json();
+
+    if (result.success) {
+      showToast('✅ Rad etildi', 'success');
+      loadCompletions();
+    } else {
+      showToast('❌ Xatolik', 'error');
+    }
+  } catch (error) {
+    console.error('Ошибка отклонения:', error);
+    showToast('❌ Xatolik yuz berdi', 'error');
+  }
 }
 
 // ========================================

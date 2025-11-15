@@ -3,3 +3,4 @@ node_modules/
 database.db
 *.log
 .DS_Store
+service-account.json

@@ -32,6 +32,26 @@ const mainMenu = {
     }
 };
 
+// Middleware для проверки регистрации
+async function requireRegistration(msg, next) {
+    const telegramId = msg.from.id;
+    const chatId = msg.chat.id;
+
+    db.getUserByTelegramId(telegramId, (err, user) => {
+        if (err || !user || !user.full_name || !user.phone_number) {
+            bot.sendMessage(
+                chatId,
+                '⚠️ <b>Siz ro\'yxatdan o\'tmagansiz!</b>\n\n' +
+                'Botdan foydalanish uchun avval ro\'yxatdan o\'ting.\n' +
+                'Boshlash uchun /start tugmasini bosing.',
+                { parse_mode: 'HTML' }
+            );
+            return;
+        }
+        next(user);
+    });
+}
+
 // ========================================
 // КОМАНДЫ
 // ========================================
@@ -41,8 +61,10 @@ bot.onText(/\/start/, async (msg) => {
     const telegramId = msg.from.id;
 
     // ✅ ИСПРАВЛЕНО: Гарантируем что это строка
-    const username = String(msg.from.username || '').trim();
-
+    // ✅ ИСПРАВЛЕНО: Явная проверка на тип
+    const username = (msg.from.username && typeof msg.from.username === 'string')
+        ? msg.from.username.trim()
+        : '';
     console.log('═══════════════════════════════════');
     console.log('📱 /start команда:');
     console.log('   Telegram ID:', telegramId);
@@ -112,18 +134,29 @@ bot.onText(/\/start/, async (msg) => {
 // РЕГИСТРАЦИЯ
 // ========================================
 
+// ========================================
+// РЕГИСТРАЦИЯ
+// ========================================
+
 bot.on('message', async (msg) => {
     const chatId = msg.chat.id;
     const telegramId = msg.from.id;
     const text = msg.text;
 
     // Пропускаем команды и кнопки меню
-    if (text && (text.startsWith('/') || text.includes('📚') || text.includes('📖') || text.includes('🎥') || text.includes('🎓') || text.includes('🎫') || text.includes('⚙️'))) {
+    if (text && (
+        text.startsWith('/') ||
+        text.includes('📚') ||
+        text.includes('📖') ||
+        text.includes('🎥') ||
+        text.includes('🎓') ||
+        text.includes('🎫') ||
+        text.includes('⚙️')
+    )) {
         return;
     }
 
     const state = userStates.get(telegramId);
-
     if (!state) return;
 
     // Шаг 1: Получение ФИО
@@ -136,6 +169,9 @@ bot.on('message', async (msg) => {
         state.step = 'waiting_phone';
         userStates.set(telegramId, state);
 
+        console.log('📝 Сохранено имя:', state.full_name); // ✅ ДОБАВЬТЕ ЭТО
+
+
         bot.sendMessage(
             chatId,
             `✅ Ism: <b>${text}</b>\n\n` +
@@ -144,12 +180,10 @@ bot.on('message', async (msg) => {
             {
                 parse_mode: 'HTML',
                 reply_markup: {
-                    keyboard: [
-                        [{
-                            text: '📱 Telefon raqamni yuborish',
-                            request_contact: true
-                        }]
-                    ],
+                    keyboard: [[{
+                        text: '📱 Telefon raqamni yuborish',
+                        request_contact: true
+                    }]],
                     resize_keyboard: true,
                     one_time_keyboard: true
                 }
@@ -159,16 +193,12 @@ bot.on('message', async (msg) => {
     }
 
     // Шаг 2: Получение телефона
-    // Шаг 2: Получение телефона
     if (state.step === 'waiting_phone') {
         let phoneNumber = null;
 
-        // Если отправлен контакт
         if (msg.contact) {
             phoneNumber = msg.contact.phone_number;
-        }
-        // Если введен вручную
-        else if (text) {
+        } else if (text) {
             phoneNumber = text.replace(/[^\d+]/g, '');
 
             if (!phoneNumber.startsWith('+')) {
@@ -187,39 +217,90 @@ bot.on('message', async (msg) => {
             return bot.sendMessage(chatId, '❌ Iltimos, telefon raqamingizni yuboring.');
         }
 
-        // ✅ ИСПРАВЛЕНО: Получаем username из нескольких источников
-        let username = '';
-
-        // 1. Из state (сохранили при /start)
-        if (state.username) {
-            username = state.username;
-        }
-        // 2. Из текущего сообщения
-        else if (msg.from.username) {
-            username = msg.from.username;
-        }
-        // 3. Из контакта (если есть)
-        else if (msg.contact && msg.contact.user_id === telegramId) {
-            // Telegram не передает username в контакте, используем имя
-            username = '';
-        }
-
-        // Убеждаемся что это строка
-        username = String(username || '').trim();
+        const username = state.username ||
+            ((msg.from.username && typeof msg.from.username === 'string')
+                ? msg.from.username.trim()
+                : '');
+        // Сохраняем телефон во временное состояние
+        state.phone_number = phoneNumber;
+        state.step = 'waiting_course_status';
+        userStates.set(telegramId, state);
 
         console.log('═══════════════════════════════════');
-        console.log('📝 РЕГИСТРАЦИЯ ПОЛЬЗОВАТЕЛЯ:');
+        console.log('📱 ТЕЛЕФОН ПОЛУЧЕН:');
+        console.log('   Telegram ID:', telegramId);
+        console.log('   Телефон:', phoneNumber);
+        console.log('   Переход к опросу о курсах');
+        console.log('═══════════════════════════════════');
+
+        // ✅ НОВОЕ: Спрашиваем о завершении курсов
+        bot.sendMessage(
+            chatId,
+            `✅ Telefon: <b>${phoneNumber}</b>\n\n` +
+            `❓ <b>Avvalroq bizning kurslarimizni tugatganmisiz?</b>\n\n` +
+            `<i>Bu bizga sizga mos xizmatlarni taqdim etishda yordam beradi.</i>`,
+            {
+                parse_mode: 'HTML',
+                reply_markup: {
+                    keyboard: [
+                        ['✅ Ha, tugatganman'],
+                        ['📚 Yo\'q, yangi boshlovchiman']
+                    ],
+                    resize_keyboard: true,
+                    one_time_keyboard: true
+                }
+            }
+        );
+        return;
+    }
+
+    // ✅ НОВЫЙ ШАГ 3: Определение типа пользователя
+    if (state.step === 'waiting_course_status') {
+        let userType = 'regular'; // По умолчанию обычный
+
+        if (text && (text.includes('Ha') || text.includes('tugatganman'))) {
+            userType = 'completed';
+        } else if (text && (text.includes('Yo\'q') || text.includes('yangi'))) {
+            userType = 'regular';
+        } else {
+            return bot.sendMessage(
+                chatId,
+                '❌ Iltimos, tugmalardan birini tanlang!',
+                {
+                    reply_markup: {
+                        keyboard: [
+                            ['✅ Ha, tugatganman'],
+                            ['📚 Yo\'q, yangi boshlovchiman']
+                        ],
+                        resize_keyboard: true,
+                        one_time_keyboard: true
+                    }
+                }
+            );
+        }
+
+        const username = (msg.from.username && typeof msg.from.username === 'string')
+            ? msg.from.username.trim()
+            : '';
+        console.log('═══════════════════════════════════');
+        console.log('📝 СОЗДАНИЕ ПОЛЬЗОВАТЕЛЯ:');
         console.log('   Telegram ID:', telegramId);
         console.log('   Username:', username);
-        console.log('   Username (type):', typeof username);
-        console.log('   Имя:', state.full_name);
-        console.log('   Телефон:', phoneNumber);
-        console.log('   Источник username:', state.username ? 'state' : msg.from.username ? 'msg.from' : 'нет');
+        console.log('   Имя:', state.full_name); // ✅ Проверьте что тут НЕ undefined
+        console.log('   Телефон:', state.phone_number);
+        console.log('   Тип:', userType);
         console.log('═══════════════════════════════════');
 
+        if (!state.full_name || !state.phone_number) {
+            console.error('❌ ОШИБКА: Нет имени или телефона!', state);
+            userStates.delete(telegramId);
+            return bot.sendMessage(chatId, '❌ Xatolik yuz berdi. Qaytadan /start bosing.');
+        }
+
+        // Создаем пользователя
         db.createUser(
             telegramId,
-            username, // ✅ Гарантированно строка
+            username,
             state.full_name,
             (err) => {
                 if (err) {
@@ -228,33 +309,46 @@ bot.on('message', async (msg) => {
                     return bot.sendMessage(chatId, '❌ Xatolik yuz berdi. Qaytadan /start bosing.');
                 }
 
-                console.log('✅ Пользователь успешно создан');
+                console.log('✅ Пользователь создан');
 
                 // Обновляем телефон
-                db.updateUserPhone(telegramId, phoneNumber, (err) => {
+                db.updateUserPhone(telegramId, state.phone_number, (err) => {
                     if (err) {
                         console.error('❌ Ошибка обновления телефона:', err);
                     } else {
                         console.log('✅ Телефон обновлен');
                     }
 
-                    userStates.delete(telegramId);
-
-                    const usernameDisplay = username ? `@${username}` : 'Yo\'q';
-
-                    bot.sendMessage(
-                        chatId,
-                        `✅ <b>Ro'yxatdan o'tish muvaffaqiyatli!</b>\n\n` +
-                        `👤 Ism: ${state.full_name}\n` +
-                        `📱 Telefon: ${phoneNumber}\n` +
-                        `💬 Username: ${usernameDisplay}\n\n` +
-                        `📚 Endi siz kurslarni ko'rishingiz va sotib olishingiz mumkin.\n` +
-                        `🎫 QR kodingizni olish uchun "Mening QR kodim" tugmasini bosing.`,
-                        {
-                            parse_mode: 'HTML',
-                            ...mainMenu
+                    // ✅ Обновляем тип пользователя
+                    db.updateUserType(telegramId, userType, (err) => {
+                        if (err) {
+                            console.error('❌ Ошибка обновления типа:', err);
+                        } else {
+                            console.log('✅ Тип пользователя установлен:', userType);
                         }
-                    );
+
+                        userStates.delete(telegramId);
+
+                        const statusEmoji = userType === 'completed' ? '🎓' : '📚';
+                        const statusText = userType === 'completed'
+                            ? 'Kurslarni tugaganlar'
+                            : 'Yangi foydalanuvchilar';
+
+                        bot.sendMessage(
+                            chatId,
+                            `✅ <b>Ro'yxatdan o'tish muvaffaqiyatli!</b>\n\n` +
+                            `👤 Ism: ${state.full_name}\n` +
+                            `📱 Telefon: ${state.phone_number}\n` +
+                            `💬 Username: ${username ? '@' + username : 'Yo\'q'}\n` +
+                            `${statusEmoji} Status: ${statusText}\n\n` +
+                            `📚 Endi siz kurslarni ko'rishingiz va sotib olishingiz mumkin.\n` +
+                            `🎫 QR kodingizni olish uchun "Mening QR kodim" tugmasini bosing.`,
+                            {
+                                parse_mode: 'HTML',
+                                ...mainMenu
+                            }
+                        );
+                    });
                 });
             }
         );
@@ -403,6 +497,67 @@ bot.on('callback_query', async (query) => {
         await bot.answerCallbackQuery(query.id);
         bot.deleteMessage(chatId, query.message.message_id);
     }
+
+    if (data.startsWith('complete_')) {
+        const courseId = data.replace('complete_', '');
+
+        await bot.answerCallbackQuery(query.id);
+
+        db.getUserByTelegramId(telegramId, (err, user) => {
+            if (err || !user) {
+                return bot.sendMessage(chatId, '❌ Xatolik yuz berdi.');
+            }
+
+            // Проверяем есть ли уже заявка
+            db.db.get(
+                `SELECT * FROM completion_requests 
+                 WHERE user_id = ? AND course_id = ? AND status = 'pending'`,
+                [user.id, courseId],
+                (err, existing) => {
+                    if (existing) {
+                        return bot.sendMessage(
+                            chatId,
+                            '⏳ Siz bu kurs uchun allaqachon so\'rov yuborgansiz.\n' +
+                            'Adminlar tez orada ko\'rib chiqadi.'
+                        );
+                    }
+
+                    // Создаем заявку
+                    db.createCompletionRequest(telegramId, courseId, null, (err) => {
+                        if (err) {
+                            console.error('Ошибка создания заявки:', err);
+                            return bot.sendMessage(chatId, '❌ Xatolik yuz berdi.');
+                        }
+
+                        bot.sendMessage(
+                            chatId,
+                            '✅ <b>So\'rovingiz yuborildi!</b>\n\n' +
+                            'Adminlar tez orada ko\'rib chiqib, natijani bildirishadi.\n\n' +
+                            '📋 Kurs tugallangandan so\'ng sertifikat beriladi.',
+                            { parse_mode: 'HTML' }
+                        );
+
+                        // Уведомляем всех админов
+                        db.getCourse(courseId, (err, course) => {
+                            if (course && global.telegramBot) {
+                                const adminMessage =
+                                    `🎓 <b>Yangi tugallanish so'rovi!</b>\n\n` +
+                                    `👤 Talaba: ${user.full_name}\n` +
+                                    `📱 Telefon: ${user.phone_number}\n` +
+                                    `💬 Username: @${user.username || user.telegram_id}\n` +
+                                    `📚 Kurs: ${course.title}\n\n` +
+                                    `Admin panelda ko'rib chiqing.`;
+
+                                // Отправляем всем админам (если есть их telegram_id)
+                                // TODO: добавьте telegram_id в таблицу admins
+                                console.log('📢 Админы должны получить уведомление:', adminMessage);
+                            }
+                        });
+                    });
+                }
+            );
+        });
+    }
 });
 
 // ========================================
@@ -476,25 +631,38 @@ bot.onText(/🎓 Mening kurslarim/, async (msg) => {
     const chatId = msg.chat.id;
     const telegramId = msg.from.id;
 
-    db.getUserPurchases(telegramId, (err, purchases) => {
-        if (err || !purchases || purchases.length === 0) {
-            return bot.sendMessage(chatId, '❌ Sizda hali sotib olingan kurslar yo\'q.');
-        }
-
-        let message = '🎓 <b>Sizning kurslaringiz:</b>\n\n';
-
-        purchases.forEach((p, i) => {
-            const icon = p.type === 'course' ? '📚' : p.type === 'book' ? '📖' : '🎥';
-            message += `${i + 1}. ${icon} <b>${p.title}</b>\n`;
-
-            if (p.days_left !== null) {
-                message += `   ⏳ Qolgan vaqt: ${p.days_left} kun\n`;
+    requireRegistration(msg, (user) => {
+        db.getUserPurchases(telegramId, (err, purchases) => {
+            if (err || !purchases || purchases.length === 0) {
+                return bot.sendMessage(chatId, '❌ Sizda hali sotib olingan kurslar yo\'q.');
             }
 
-            message += `\n`;
-        });
+            let message = '🎓 <b>Sizning kurslaringiz:</b>\n\n';
 
-        bot.sendMessage(chatId, message, { parse_mode: 'HTML' });
+            purchases.forEach((p, i) => {
+                const icon = p.type === 'course' ? '📚' : p.type === 'book' ? '📖' : '🎥';
+                message += `${i + 1}. ${icon} <b>${p.title}</b>\n`;
+
+                if (p.days_left !== null) {
+                    message += `   ⏳ Qolgan vaqt: ${p.days_left} kun\n`;
+                }
+
+                message += `\n`;
+            });
+
+            // ✅ Добавляем inline кнопки для завершения
+            const buttons = purchases.map((p, i) => [{
+                text: `✅ ${p.title} - O'qishni yakunladim`,
+                callback_data: `complete_${p.course_id}`
+            }]);
+
+            bot.sendMessage(chatId, message, {
+                parse_mode: 'HTML',
+                reply_markup: {
+                    inline_keyboard: buttons
+                }
+            });
+        });
     });
 });
 
