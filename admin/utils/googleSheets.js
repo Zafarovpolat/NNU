@@ -85,15 +85,17 @@ async function logQRScan(user, timestamp) {
 
     try {
         const date = new Date(timestamp);
+
+        // ✅ ИСПРАВЛЕНО: Простой и понятный формат
         const formattedDate = date.toLocaleString('ru-RU', {
             timeZone: 'Asia/Tashkent',
-            year: 'numeric',
-            month: '2-digit',
             day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
             hour: '2-digit',
             minute: '2-digit',
             second: '2-digit'
-        });
+        }).replace(',', ''); // Убираем запятую между датой и временем
 
         // ✅ Безопасная обработка username
         let displayUsername = user.telegram_id.toString();
@@ -104,18 +106,23 @@ async function logQRScan(user, timestamp) {
             displayUsername = '@' + user.username;
         }
 
+        // ✅ ИСПРАВЛЕНО: Добавляем + к телефону
+        const phoneNumber = user.phone_number
+            ? (user.phone_number.startsWith('+') ? user.phone_number : '+' + user.phone_number)
+            : 'N/A';
+
         const values = [[
-            formattedDate,
+            formattedDate,           // 15.11.2025 22:30:45
             user.full_name || 'N/A',
-            user.phone_number || 'N/A',
-            displayUsername,
+            phoneNumber,             // +998999999999
+            displayUsername,         // @username или ID
             user.telegram_id.toString()
         ]];
 
         await sheetsClient.spreadsheets.values.append({
             spreadsheetId: SPREADSHEET_ID,
             range: `${SHEET_NAME}!A:E`,
-            valueInputOption: 'USER_ENTERED',
+            valueInputOption: 'RAW',  // ✅ RAW чтобы не конвертировать в число
             insertDataOption: 'INSERT_ROWS',
             resource: { values }
         });
