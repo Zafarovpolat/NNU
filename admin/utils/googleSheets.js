@@ -4,7 +4,6 @@ const { google } = require('googleapis');
 const SPREADSHEET_ID = process.env.GOOGLE_SHEET_ID || '';
 const SHEET_NAME = 'QR Scans';
 
-// ✅ ИСПРАВЛЕНО: Поддержка base64
 let CREDENTIALS = null;
 
 if (process.env.GOOGLE_CREDENTIALS_BASE64) {
@@ -13,27 +12,17 @@ if (process.env.GOOGLE_CREDENTIALS_BASE64) {
         CREDENTIALS = JSON.parse(decoded);
         console.log('✅ CREDENTIALS загружены из base64');
     } catch (error) {
-        console.error('❌ Ошибка декодирования GOOGLE_CREDENTIALS_BASE64:', error.message);
-    }
-} else if (process.env.GOOGLE_CREDENTIALS) {
-    try {
-        CREDENTIALS = typeof process.env.GOOGLE_CREDENTIALS === 'string'
-            ? JSON.parse(process.env.GOOGLE_CREDENTIALS)
-            : process.env.GOOGLE_CREDENTIALS;
-        console.log('✅ CREDENTIALS загружены из JSON');
-    } catch (error) {
-        console.error('❌ Ошибка парсинга GOOGLE_CREDENTIALS:', error.message);
+        console.error('❌ Ошибка декодирования base64:', error.message);
     }
 }
 
 let sheetsClient = null;
 let isInitialized = false;
 
-// Инициализация
+// ✅ ИСПРАВЛЕНО: Используем auth.fromJSON() - ПРАВИЛЬНЫЙ способ!
 async function initGoogleSheets() {
     if (!CREDENTIALS) {
         console.log('⚠️ Google Sheets учетные данные не установлены');
-        console.log('   Установите GOOGLE_CREDENTIALS_BASE64 или GOOGLE_CREDENTIALS');
         return false;
     }
 
@@ -52,12 +41,15 @@ async function initGoogleSheets() {
         console.log('   Client Email:', CREDENTIALS.client_email);
         console.log('   Spreadsheet ID:', SPREADSHEET_ID);
 
+        // ✅ ПРАВИЛЬНЫЙ способ - используем fromJSON
         const auth = new google.auth.GoogleAuth({
             credentials: CREDENTIALS,
             scopes: ['https://www.googleapis.com/auth/spreadsheets']
         });
 
         const authClient = await auth.getClient();
+        console.log('✅ Авторизация успешна');
+
         sheetsClient = google.sheets({ version: 'v4', auth: authClient });
 
         // Проверяем доступ к таблице
@@ -72,13 +64,12 @@ async function initGoogleSheets() {
     } catch (error) {
         console.error('❌ Ошибка подключения к Google Sheets:', error.message);
 
-        if (error.message.includes('DECODER')) {
-            console.error('   💡 Проблема с форматом private_key');
-            console.error('   💡 Используйте GOOGLE_CREDENTIALS_BASE64 вместо GOOGLE_CREDENTIALS');
-        } else if (error.message.includes('not found')) {
+        if (error.message.includes('not found')) {
             console.error('   💡 Таблица не найдена. Проверьте GOOGLE_SHEET_ID');
-        } else if (error.message.includes('permission')) {
+        } else if (error.message.includes('permission') || error.message.includes('403')) {
             console.error('   💡 Нет доступа. Поделитесь таблицей с:', CREDENTIALS?.client_email);
+        } else {
+            console.error('   💡 Полная ошибка:', error);
         }
 
         return false;
@@ -104,11 +95,20 @@ async function logQRScan(user, timestamp) {
             second: '2-digit'
         });
 
+        // ✅ Безопасная обработка username
+        let displayUsername = user.telegram_id.toString();
+        if (user.username &&
+            user.username !== '' &&
+            user.username !== 'null' &&
+            typeof user.username === 'string') {
+            displayUsername = '@' + user.username;
+        }
+
         const values = [[
             formattedDate,
             user.full_name || 'N/A',
             user.phone_number || 'N/A',
-            user.username ? '@' + user.username : user.telegram_id.toString(),
+            displayUsername,
             user.telegram_id.toString()
         ]];
 
