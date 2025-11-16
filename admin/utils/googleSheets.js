@@ -4,6 +4,7 @@ const { google } = require('googleapis');
 const SPREADSHEET_ID = process.env.GOOGLE_SHEET_ID || '';
 const SHEET_NAME = 'QR Scans';
 
+// Api
 let CREDENTIALS = null;
 
 if (process.env.GOOGLE_CREDENTIALS_BASE64) {
